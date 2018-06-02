@@ -1,0 +1,22 @@
+--- dsl_cpe_control-4.16.5.4-old/src/dsl_cpe_control.c	2017-10-16 11:45:17.913469036 -0400
++++ dsl_cpe_control-4.16.5.4/src/dsl_cpe_control.c	2017-10-16 12:00:57.823468926 -0400
+@@ -6588,9 +6588,17 @@ DSL_int32_t DSL_CPE_DeviceInit (
+ #endif
+    /* $$ ND: this is for testing only --> */
+    if (!DSL_CPE_GetSerialNumber(SerialNumber, sizeof(SerialNumber)))
+-  	 memcpy (&inv.SerialNumber, SerialNumber, sizeof(SerialNumber));
++   {
++	 if( SerialNumber[strlen(SerialNumber)-1]==0x0A)
++		 SerialNumber[strlen(SerialNumber)-1]=0x20;
++  	 memcpy(&inv.SerialNumber, SerialNumber, sizeof(SerialNumber));
++   }
+    if (!DSL_CPE_GetVersionNumber(VersionNumber, sizeof(VersionNumber)))
+-	 memcpy (&inv.VersionNumber, VersionNumber, sizeof(VersionNumber));
++   {
++	 if(VersionNumber[strlen(VersionNumber)-1]==0x0A)
++		 VersionNumber[strlen(VersionNumber)-1]=0x20;
++	 memcpy(&inv.VersionNumber, VersionNumber, sizeof(VersionNumber));
++   }
+    memcpy (&inv.SystemVendorID, G994VendorID, 8);
+    init.data.pInventory = &inv;
+    /* $$ <-- */

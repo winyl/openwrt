@@ -1,0 +1,61 @@
+--- a/ltqqoscmd_autotest.c
++++ b/ltqqoscmd_autotest.c
+@@ -20,6 +20,7 @@
+ 
+ #include <stdio.h>
+ #include <stdlib.h>
++#include <stdint.h>
+ #include <string.h>
+ #include <fcntl.h>
+ #include <unistd.h>
+@@ -53,6 +54,7 @@ Note, below is the code for PPA test aut
+ #include <linux/filter.h>
+ #include <stdarg.h>
+ #include <sys/stat.h>
++#include <netinet/in.h>
+ 
+ #define PPA_TEST_AUTOMATION_MAC_LEN 6
+ #define PPA_TEST_AUTOMATION_MAX_PKT_DATA_LEN  1200
+--- a/net/ppa_stack_al.h
++++ b/net/ppa_stack_al.h
+@@ -31,6 +31,7 @@
+ 
+ 
+ #include <net/ppa_api_common.h>
++#include <stdint.h>
+ 
+ #ifdef __KERNEL__
+   #include <linux/version.h>
+@@ -193,26 +194,26 @@ struct ltq_mei_atm_showtime_info {
+  */
+ #ifndef __KERNEL__
+ #ifndef BUILD_FROM_PPA_ADAPT
+-/*!
++/*! data types are defined in glibc header stdint.h. Disable here.
+     \brief This is the unsigned char 32-bit data type.
+-*/
++
+   typedef unsigned long         uint32_t;
+ 
+ /*! \def uint16_t
+     \brief This is the unsigned char 16-bit data type.
+-*/
++
+   typedef unsigned short        uint16_t;
+ 
+ /*!
+     \brief This is the unsigned char 8-bit data type.
+-*/
++
+   typedef unsigned char         uint8_t;
+ 
+ /*!
+     \brief This is the unsigned char 64-bit data type.
+-*/
+-  typedef unsigned long long        uint64_t;
+ 
++  typedef unsigned long long        uint64_t;
++*/
+ #endif
+ #endif
+ /*

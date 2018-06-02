@@ -1,0 +1,37 @@
+--- a/src/Makefile.in
++++ b/src/Makefile.in
+@@ -63,7 +63,7 @@ POST_UNINSTALL = :
+ 
+ # the headerfile of linux kernels 2.6.x contain to much arithmetic
+ # with void pointers (which is allowed for gcc!)
+-@KERNEL_2_6_FALSE@am__append_6 = -Wpointer-arith
++@KERNEL_2_6_FALSE@am__append_6 =
+ subdir = src
+ DIST_COMMON = $(drv_dsl_cpe_api_include_HEADERS) $(srcdir)/Makefile.am \
+ 	$(srcdir)/Makefile.in
+--- a/src/common/drv_dsl_cpe_os_linux.c
++++ b/src/common/drv_dsl_cpe_os_linux.c
+@@ -11,6 +11,7 @@
+ 
+ #define DSL_INTERN
+ 
++#include <linux/device.h>
+ #include "drv_dsl_cpe_api.h"
+ #include "drv_dsl_cpe_api_ioctl.h"
+ 
+@@ -238,14 +239,7 @@ static DSL_long_t DSL_DRV_Ioctls(DSL_DRV
+    }
+ 
+ #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,36))
+-   if (pFile->f_dentry != DSL_NULL)
+-   {
+-      pINode = pFile->f_dentry->d_inode;
+-   }
+-   else
+-   {
+-      pINode = DSL_NULL;
+-   }
++   pINode = file_inode(pFile);
+ #endif
+ 
+    if (pINode == DSL_NULL)
