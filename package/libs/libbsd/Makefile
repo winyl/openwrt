@@ -10,10 +10,29 @@ PKG_SOURCE_URL:=http://libbsd.freedesktop.org/releases
 
 PKG_LICENSE:=BSD-4-Clause
 PKG_LICENSE_FILES:=COPYING
+PKG_INSTALL:=1
 
 include $(INCLUDE_DIR)/package.mk
+include $(INCLUDE_DIR)/host-build.mk
 
-PKG_INSTALL:=1
+#needed by heimdal/host package
+define Host/Compile
+
+endef
+
+define Host/Install
+	$(INSTALL_DIR) $(STAGING_DIR_HOST)
+
+	$(CP) \
+		$(PKG_INSTALL_DIR)/lib/libbsd.so* \
+		$(1)/lib/
+
+	$(CP) \
+		$(PKG_INSTALL_DIR)/usr/include/* \
+		$(1)/include/
+
+	( cd $(1)/lib ; $(LN) libbsd.so.$(PKG_VERSION) libbsd.so )
+endef
 
 define Package/libbsd
   SECTION:=libs
