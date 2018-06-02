@@ -1,0 +1,10 @@
+--- a/configure
++++ b/configure
+@@ -31693,7 +31693,6 @@ cat > include/newversion.h.in <<EOF
+ #ifndef VERSION_HIDDEN
+ #define VERSION_HIDDEN
+ #endif
+-VERSION_HIDDEN const char *heimdal_long_version = "@(#)\$Version: $PACKAGE_STRING by @USER@ on @HOST@ ($host) @DATE@ \$";
+ VERSION_HIDDEN const char *heimdal_version = "Heimdal 7.4.0";
+ EOF
+ 

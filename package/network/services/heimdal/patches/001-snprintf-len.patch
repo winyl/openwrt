@@ -1,0 +1,16 @@
+--- a/lib/roken/snprintf.c
++++ b/lib/roken/snprintf.c
+@@ -109,13 +109,8 @@ as_append_char (struct snprintf_state *s
+ 
+ /* longest integer types */
+ 
+-#ifdef HAVE_LONG_LONG
+-typedef unsigned long long u_longest;
+-typedef long long longest;
+-#else
+ typedef unsigned long u_longest;
+ typedef long longest;
+-#endif
+ 
+ #ifndef HAVE_UINTPTR_T
+ typedef u_longest uintptr_t;

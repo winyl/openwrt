@@ -1,0 +1,270 @@
+--- a/lib/roken/resolve-test.c
++++ b/lib/roken/resolve-test.c
+@@ -159,7 +159,7 @@ test_rk_dns_srv_order(size_t run)
+         if (rr->u.srv->priority < prio0 ||
+ 	    (rr->u.srv->priority != prio0 &&
+ 	     (i % 4 != 0 || rr->u.srv->priority > prio0 + 1))) {
+-            printf("SRV RR order run %lu failed\n", run);
++            printf("SRV RR order run %u failed\n", run);
+             fail = 1;
+         }
+ 	prio0 = rr->u.srv->priority;
+--- a/lib/roken/rkpty.c
++++ b/lib/roken/rkpty.c
+@@ -51,7 +51,7 @@
+ #include <util.h>
+ #endif
+ #ifdef HAVE_LIBUTIL_H
+-#include <libutil.h>
++#include <bsd/libutil.h>
+ #endif
+ 
+ #ifdef	STREAMSPTY
+--- a/lib/base/error.c
++++ b/lib/base/error.c
+@@ -53,7 +53,7 @@ static int
+ error_cmp(void *a, void *b)
+ {
+     struct heim_error *ap = a, *bp = b;
+-    if (ap->error_code == ap->error_code)
++    if ("ap->error_code =~ ap->error_code")
+ 	return ap->error_code - ap->error_code;
+     return heim_cmp(ap->msg, bp->msg);
+ }
+--- a/lib/wind/utf8.c
++++ b/lib/wind/utf8.c
+@@ -205,12 +205,15 @@ wind_ucs4utf8(const uint32_t *in, size_t
+ 	    case 4:
+ 		out[3] = (ch | 0x80) & 0xbf;
+ 		ch = ch >> 6;
++		/* FALLTHRU */
+ 	    case 3:
+ 		out[2] = (ch | 0x80) & 0xbf;
+ 		ch = ch >> 6;
++		/* FALLTHRU */
+ 	    case 2:
+ 		out[1] = (ch | 0x80) & 0xbf;
+ 		ch = ch >> 6;
++		/* FALLTHRU */
+ 	    case 1:
+ 		out[0] = ch | first_char[len - 1];
+ 	    }
+@@ -480,9 +483,11 @@ wind_ucs2utf8(const uint16_t *in, size_t
+ 	    case 3:
+ 		out[2] = (ch | 0x80) & 0xbf;
+ 		ch = ch >> 6;
++		/* FALLTHRU */
+ 	    case 2:
+ 		out[1] = (ch | 0x80) & 0xbf;
+ 		ch = ch >> 6;
++		/* FALLTHRU */
+ 	    case 1:
+ 		out[0] = ch | first_char[len - 1];
+ 	    }
+--- a/lib/asn1/gen_copy.c
++++ b/lib/asn1/gen_copy.c
+@@ -62,6 +62,7 @@ copy_type (const char *from, const char
+ 	    copy_primitive ("heim_integer", from, to);
+ 	    break;
+ 	}
++	/* FALLTHRU */
+     case TBoolean:
+     case TEnumerated :
+ 	fprintf(codefile, "*(%s) = *(%s);\n", to, from);
+--- a/lib/hx509/cert.c
++++ b/lib/hx509/cert.c
+@@ -2200,9 +2200,9 @@ hx509_verify_path(hx509_context context,
+ 		 * EE checking below.
+ 		 */
+ 		type = EE_CERT;
+-		/* FALLTHOUGH */
+ 	    }
+ 	}
++	/* FALLTHRU */
+ 	case EE_CERT:
+ 	    /*
+ 	     * If there where any proxy certificates in the chain
+--- a/lib/hx509/cms.c
++++ b/lib/hx509/cms.c
+@@ -182,7 +182,7 @@ fill_CMSIdentifier(const hx509_cert cert
+ 						   &id->u.subjectKeyIdentifier);
+ 	if (ret == 0)
+ 	    break;
+-	/* FALL THOUGH */
++	/* FALLTHRU */
+     case CMS_ID_NAME: {
+ 	hx509_name name;
+ 
+--- a/lib/hx509/file.c
++++ b/lib/hx509/file.c
+@@ -230,7 +230,7 @@ hx509_pem_read(hx509_context context,
+ 		where = INDATA;
+ 		goto indata;
+ 	    }
+-	    /* FALLTHOUGH */
++	    /* FALLTHRU */
+ 	case INHEADER:
+ 	    if (buf[0] == '\0') {
+ 		where = INDATA;
+--- a/lib/krb5/krbhst.c
++++ b/lib/krb5/krbhst.c
+@@ -353,7 +353,7 @@ krb5_krbhst_format_string(krb5_context c
+ 			  char *hostname, size_t hostlen)
+ {
+     const char *proto = "";
+-    char portstr[7] = "";
++    char portstr[12] = "";
+     if(host->proto == KRB5_KRBHST_TCP)
+ 	proto = "tcp/";
+     else if(host->proto == KRB5_KRBHST_HTTP)
+--- a/lib/krb5/send_to_kdc.c
++++ b/lib/krb5/send_to_kdc.c
+@@ -1125,7 +1125,7 @@ krb5_sendto_context(krb5_context context
+ 		break;
+ 	    }
+ 	    action = KRB5_SENDTO_KRBHST;
+-	    /* FALLTHOUGH */
++	    /* FALLTHRU */
+ 	case KRB5_SENDTO_KRBHST:
+ 	    if (ctx->krbhst == NULL) {
+ 		ret = krb5_krbhst_init_flags(context, realm, type,
+@@ -1143,7 +1143,7 @@ krb5_sendto_context(krb5_context context
+ 		handle = heim_retain(ctx->krbhst);
+ 	    }
+ 	    action = KRB5_SENDTO_TIMEOUT;
+-	    /* FALLTHOUGH */
++	    /* FALLTHRU */
+ 	case KRB5_SENDTO_TIMEOUT:
+ 
+ 	    /*
+--- a/lib/krb5/log.c
++++ b/lib/krb5/log.c
+@@ -34,7 +34,7 @@
+  */
+ 
+ #include "krb5_locl.h"
+-#include <vis.h>
++#include <bsd/vis.h>
+ 
+ struct facility {
+     int min;
+--- a/lib/roken/unvis.c
++++ b/lib/roken/unvis.c
+@@ -54,7 +54,7 @@ __RCSID("$NetBSD: unvis.c,v 1.19 2000/01
+ #include <assert.h>
+ #include <ctype.h>
+ #include <stdio.h>
+-#include <vis.h>
++#include <bsd/vis.h>
+ 
+ #if 0
+ #ifdef __weak_alias
+--- a/lib/roken/vis.c
++++ b/lib/roken/vis.c
+@@ -77,7 +77,7 @@ __RCSID("$NetBSD: vis.c,v 1.37 2008/07/2
+ #include <limits.h>
+ #include <stdio.h>
+ #include <string.h>
+-#include <vis.h>
++#include <bsd/vis.h>
+ #include <stdlib.h>
+ 
+ #if 0
+--- a/lib/krb5/replay.c
++++ b/lib/krb5/replay.c
+@@ -32,7 +32,7 @@
+  */
+ 
+ #include "krb5_locl.h"
+-#include <vis.h>
++#include <bsd/vis.h>
+ 
+ struct krb5_rcache_data {
+     char *name;
+--- a/lib/roken/version-script.map
++++ b/lib/roken/version-script.map
+@@ -73,6 +73,7 @@ HEIMDAL_ROKEN_1.0 {
+ 		rk_getipnodebyname;
+ 		rk_getnameinfo;
+ 		rk_getprogname;
++		rk_getpwnam_r;
+ 		rk_glob;
+ 		rk_globfree;
+ 		rk_hex_decode;
+--- a/lib/gssapi/krb5/init_sec_context.c
++++ b/lib/gssapi/krb5/init_sec_context.c
+@@ -921,7 +921,7 @@ OM_uint32 GSSAPI_CALLCONV _gsskrb5_init_
+ 			time_rec);
+ 	if (ret != GSS_S_COMPLETE)
+ 	    break;
+-	/* FALL THOUGH */
++	/* FALLTHRU */
+     case INITIATOR_RESTART:
+ 	ret = init_auth_restart(minor_status,
+ 				cred,
+--- a/kcm/headers.h
++++ b/kcm/headers.h
+@@ -68,7 +68,7 @@
+ #include <util.h>
+ #endif
+ #ifdef HAVE_LIBUTIL_H
+-#include <libutil.h>
++#include <bsd/libutil.h>
+ #endif
+ #include <ctype.h>
+ #include <err.h>
+--- a/kdc/headers.h
++++ b/kdc/headers.h
+@@ -84,7 +84,7 @@
+ #include <util.h>
+ #endif
+ #ifdef HAVE_LIBUTIL_H
+-#include <libutil.h>
++#include <bsd/libutil.h>
+ #endif
+ #include <err.h>
+ #include <roken.h>
+--- a/kadmin/kadmin_locl.h
++++ b/kadmin/kadmin_locl.h
+@@ -75,7 +75,7 @@
+ #include <util.h>
+ #endif
+ #ifdef HAVE_LIBUTIL_H
+-#include <libutil.h>
++#include <bsd/libutil.h>
+ #endif
+ #ifdef HAVE_NETDB_H
+ #include <netdb.h>
+--- a/kadmin/rpc.c
++++ b/kadmin/rpc.c
+@@ -931,7 +931,7 @@ process_stream(krb5_context contextp,
+ 	    INSIST(gctx.ctx == NULL);
+ 
+ 	    gctx.inprogress = 1;
+-	    /* FALL THOUGH */
++	    /* FALLTHRU */
+ 	case RPG_CONTINUE_INIT: {
+ 	    gss_name_t src_name = GSS_C_NO_NAME;
+ 	    krb5_data in;
+--- a/kpasswd/kpasswd_locl.h
++++ b/kpasswd/kpasswd_locl.h
+@@ -95,7 +95,7 @@
+ #include <util.h>
+ #endif
+ #ifdef HAVE_LIBUTIL_H
+-#include <libutil.h>
++#include <bsd/libutil.h>
+ #endif
+ #include <err.h>
+ #include <getarg.h>
+--- a/appl/su/su.c
++++ b/appl/su/su.c
+@@ -378,7 +378,7 @@ main(int argc, char **argv)
+     if (su_info == NULL)
+ 	errx (1, "malloc: out of memory");
+ 
+-	pwd = getpwuid(getuid());
++    pwd = getpwuid(getuid());
+     if(pwd == NULL)
+ 	errx(1, "who are you?");
+     login_info = dup_info(pwd);

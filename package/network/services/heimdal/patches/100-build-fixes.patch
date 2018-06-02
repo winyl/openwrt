@@ -1,0 +1,22 @@
+--- a/configure
++++ b/configure
+@@ -16146,7 +16146,7 @@ case "$host" in
+ 	;;
+ *-*-linux* | *-*-linux-gnu)
+ 	case `uname -r` in
+-	2.*|3.*)
++	2.*|3.*|4.*)
+ 		native_pthread_support=yes
+ 		PTHREAD_CFLAGS=-pthread
+ 		PTHREAD_LIBADD=-pthread
+--- a/lib/asn1/gen.c
++++ b/lib/asn1/gen.c
+@@ -296,7 +296,7 @@ close_generate (void)
+         fclose (templatefile);
+     if (logfile) {
+         fprintf (logfile, "\n");
+-        fclose (logfile);
++    fclose (logfile);
+     }
+ }
+ 
