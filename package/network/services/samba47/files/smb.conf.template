@@ -1,0 +1,67 @@
+[global]
+workgroup = WORKGROUP
+netbios name = Samba4 Server
+server string = Samba4 Server
+unix charset = UTF8
+log file = /opt/var/log.samba
+log level = 0
+max log size = 5
+auth methods = guest
+guest account = admin
+map to guest = Bad Password
+security = user
+guest ok = yes
+encrypt passwords = yes
+pam password change = no
+null passwords = yes
+create mask = 0777
+directory mask = 0777
+force directory mode = 0777
+force create mode = 0777
+inherit owner = yes
+max connections = 5
+socket options = IPTOS_LOWDELAY TCP_NODELAY SO_KEEPALIVE SO_RCVBUF=65536 SO_SNDBUF=65536
+obey pam restrictions = no
+disable spoolss = yes
+host msdfs = no
+strict allocate = no
+wide links = no
+bind interfaces only = yes
+interfaces = lo br0 192.168.1.1/255.255.255.0
+use sendfile = yes
+map archive = no
+map hidden = no
+map read only = no
+map system = no
+store attributes = yes
+dos filemode = yes
+oplocks = yes
+level2 oplocks = yes
+kernel oplocks = no
+strict locking = no
+wins support = yes
+os level = 255
+domain master = yes
+local master = yes
+preferred master = yes
+enable core files = no
+deadtime = 30
+load printers = no
+printable = no
+#max protocol = SMB3_11 do not use, use client max protocol
+smb encrypt = disabled
+min receivefile size = 16384
+passdb backend = smbpasswd
+smb passwd file = /opt/etc/samba/smbpasswd
+lock directory = /opt/var/lock
+dns proxy = yes 
+client min protocol = SMB2
+#client max protocol = SMB3_11 , set by samba47 by default
+
+# your shares here share template below
+#[sharename]                   
+#comment = whatever         
+#path = /yourpathtotheshare 
+#writable = no or >yes< if you want to be able to write to it           
+#dos filetimes = yes     
+#guest ok = no or >yes< if you want guest access    
