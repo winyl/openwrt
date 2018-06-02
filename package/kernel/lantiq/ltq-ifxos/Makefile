@@ -28,7 +28,7 @@ define KernelPackage/ltq-ifxos
   SUBMENU:=Libraries
   TITLE:=Lantiq OS abstraction library
   URL:=http://www.lantiq.com/
-  DEPENDS:=@TARGET_lantiq
+  DEPENDS:=@TARGET_lantiq||TARGET_ipq806x
   FILES:=$(PKG_BUILD_DIR)/src/drv_ifxos.ko
   AUTOLOAD:=$(call AutoLoad,10,drv_ifxos)
 endef
@@ -38,14 +38,15 @@ CONFIGURE_ARGS += \
 	--enable-linux-26 \
 	--enable-kernelbuild="$(LINUX_DIR)" \
 	--enable-kernelincl="$(LINUX_DIR)/include" \
-	--with-kernel-module
+	--with-kernel-module \
+	--enable-add_drv_cflags="-fno-pic -mlong-calls"
 
-ifdef CONFIG_TARGET_lantiq
+ifneq ($(CONFIG_TARGET_lantiq) $(CONFIG_TARGET_ipq806x),)
   define Build/InstallDev
-	$(INSTALL_DIR) $(1)/usr/{lib,include/ifxos}
-	$(CP) $(PKG_BUILD_DIR)/src/include/* $(1)/usr/include/ifxos
+	$(INSTALL_DIR) $(STAGING_DIR)/usr/{lib,include/ifxos}
+	$(CP) $(PKG_BUILD_DIR)/src/include/* $(STAGING_DIR)/usr/include/ifxos
 	mkdir -p $(1)/usr/lib
-	$(CP) $(PKG_BUILD_DIR)/src/libifxos.a $(1)/usr/lib/libifxos.a
+	$(CP) $(PKG_BUILD_DIR)/src/libifxos.a $(STAGING_DIR)/usr/lib/libifxos.a
   endef
 endif
 
