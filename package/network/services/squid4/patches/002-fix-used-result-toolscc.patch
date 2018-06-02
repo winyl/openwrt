@@ -1,0 +1,15 @@
+--- a/src/tools.cc
++++ b/src/tools.cc
+@@ -580,8 +580,10 @@ enter_suid(void)
+         debugs (21, 3, "enter_suid: setresuid failed: " << xstrerr(xerrno));
+     }
+ #else
+-
+-    setuid(0);
++    if (setuid(0) < 0) {
++        int xerrno = errno;
++        debugs(50, DBG_IMPORTANT, "WARNING: no_suid: setuid(0): " << xstrerr(xerrno));
++    }
+ #endif
+ #if HAVE_PRCTL && defined(PR_SET_DUMPABLE)
+     /* Set Linux DUMPABLE flag */
