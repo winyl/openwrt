@@ -28,7 +28,7 @@ define KernelPackage/ltq-ifxos
   SUBMENU:=Libraries
   TITLE:=Lantiq OS abstraction library
   URL:=http://www.lantiq.com/
-  DEPENDS:=@TARGET_lantiq||TARGET_ipq806x
+  DEPENDS:=@TARGET_lantiq||TARGET_ipq806x_d7800
   FILES:=$(PKG_BUILD_DIR)/src/drv_ifxos.ko
   AUTOLOAD:=$(call AutoLoad,10,drv_ifxos)
 endef
@@ -41,7 +41,7 @@ CONFIGURE_ARGS += \
 	--with-kernel-module \
 	--enable-add_drv_cflags="-fno-pic -mlong-calls"
 
-ifneq ($(CONFIG_TARGET_lantiq) $(CONFIG_TARGET_ipq806x),)
+ifneq ($(CONFIG_TARGET_lantiq) $(CONFIG_TARGET_ipq806x_d7800),)
   define Build/InstallDev
 	$(INSTALL_DIR) $(STAGING_DIR)/usr/{lib,include/ifxos}
 	$(CP) $(PKG_BUILD_DIR)/src/include/* $(STAGING_DIR)/usr/include/ifxos
