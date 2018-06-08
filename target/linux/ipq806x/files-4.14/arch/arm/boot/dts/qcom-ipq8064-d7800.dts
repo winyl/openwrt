@@ -144,6 +144,7 @@
 		};
 
 		sata-phy@1b400000 {
+			ports-implemented = <0x1>; /* fix esata port by steppres */
 			status = "ok";
 		};
 
@@ -194,6 +195,14 @@
 			pinctrl-0 = <&pcie1_pins>;
 			pinctrl-names = "default";
 			force_gen1 = <1>;
+		};
+
+		/* Enable 3rd PCIe slot on D7800 where DSL modem is */
+		pcie2: pci@1b900000 {
+			status = "ok"
+			reset-gpio = <&qcom_pinmux 63 GPIO_ACTIVE_HIGH>;
+			pinctrl-0 = <&pcie2_pins>;
+			pinctrl-names = "default";
 		};
 
 		nand@1ac00000 {
