@@ -1,6 +1,6 @@
 /*
  **************************************************************************
- * Copyright (c) 2013-2015, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2013-2017, The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -39,6 +39,9 @@
 #include <nss_gmac_dev.h>
 #include <nss_gmac_network_interface.h>
 
+/* Pause is 5000 slot-times where slot-time is the time taken to transmit 64 bytes on GMII */
+#define NSS_GMAC_PAUSE_TIME 0x13880000
+
 /*
  * Function to check the current link status
  * @param[in] pointer to device structure.
@@ -51,13 +54,12 @@ int32_t nss_gmac_check_link(struct nss_gmac_dev *gmacdev)
 	if (!test_bit(__NSS_GMAC_LINKPOLL, &gmacdev->flags))
 		return LINKUP;
 
-	if (gmacdev->emulation && (gmacdev->phy_mii_type == PHY_INTERFACE_MODE_SGMII
-			|| gmacdev->phy_mii_type == PHY_INTERFACE_MODE_QSGMII)) {
+#ifdef RUMI_EMULATION_SUPPORT
+	if (gmacdev->phy_mii_type == PHY_INTERFACE_MODE_SGMII
+			|| gmacdev->phy_mii_type == PHY_INTERFACE_MODE_QSGMII) {
 		return LINKUP;
 	}
-
-	genphy_read_status(phydev);
-
+#endif
 	if (phydev->link)
 		return LINKUP;
 
@@ -155,7 +157,7 @@ int32_t nss_gmac_write_phy_reg(uint32_t *reg_base, uint32_t phy_base,
 		msleep(100);
 	}
 
-	pr_debug("Error::: PHY not responding; Busy bit not cleared!! addr:data %x:%x",
+	pr_debug("Error::: PHY not responding; Busy bit not cleared!! addr:data %x:%x\n",
 	     temp, data);
 
 	return -EIO;
@@ -175,7 +177,7 @@ uint16_t nss_gmac_mii_rd_reg(struct nss_gmac_dev *gmacdev, uint32_t phy,
 	uint16_t data = 0;
 
 	if (IS_ERR(gmacdev->phydev)) {
-		netdev_dbg(gmacdev->netdev, "Error: Reading uninitialized PHY...");
+		netdev_dbg(gmacdev->netdev, "Error: Reading uninitialized PHY...\n");
 		return 0;
 	}
 
@@ -197,7 +199,7 @@ void nss_gmac_mii_wr_reg(struct nss_gmac_dev *gmacdev, uint32_t phy,
 			 uint32_t reg, uint16_t data)
 {
 	if (IS_ERR(gmacdev->phydev))
-		netdev_dbg(gmacdev->netdev, "Error: Writing uninitialized PHY...");
+		netdev_dbg(gmacdev->netdev, "Error: Writing uninitialized PHY...\n");
 	else
 		phy_write(gmacdev->phydev, reg, data);
 }
@@ -210,16 +212,18 @@ void nss_gmac_mii_wr_reg(struct nss_gmac_dev *gmacdev, uint32_t phy,
  */
 void nss_gmac_reset_phy(struct nss_gmac_dev *gmacdev, uint32_t phyid)
 {
-	if (gmacdev->emulation && (gmacdev->phy_mii_type != PHY_INTERFACE_MODE_RGMII))
+#ifdef RUMI_EMULATION_SUPPORT
+	if (gmacdev->phy_mii_type != PHY_INTERFACE_MODE_RGMII)
 		return;
+#endif
 
 	nss_gmac_mii_wr_reg(gmacdev, phyid, MII_BMCR, BMCR_RESET);
 	nss_gmac_mii_wr_reg(gmacdev, phyid, MII_BMCR,
 			    nss_gmac_mii_rd_reg(gmacdev, phyid, MII_BMCR)
 			    | BMCR_ANENABLE);
 
-	test_and_set_bit(__NSS_GMAC_AUTONEG, &gmacdev->flags);
-	netdev_dbg(gmacdev->netdev, "Phy %u reset OK", phyid);
+	set_bit(__NSS_GMAC_AUTONEG, &gmacdev->flags);
+	netdev_dbg(gmacdev->netdev, "Phy %u reset OK\n", phyid);
 }
 
 
@@ -233,7 +237,7 @@ int32_t nss_gmac_read_version(struct nss_gmac_dev *gmacdev)
 {
 	uint32_t data = 0;
 
-	data = nss_gmac_read_reg((uint32_t *)gmacdev->mac_base, gmac_version);
+	data = nss_gmac_read_reg(gmacdev->mac_base, gmac_version);
 	gmacdev->version = data;
 	return 0;
 }
@@ -255,23 +259,21 @@ void nss_gmac_reset(struct nss_gmac_dev *gmacdev)
 	netdev = gmacdev->netdev;
 	ctx = gmacdev->ctx;
 
-	netdev_dbg(netdev, "%s: %s resetting...",
+	netdev_dbg(netdev, "%s: %s resetting...\n",
 		      __func__, netdev->name);
 
 	reset_time = jiffies;
-	nss_gmac_write_reg((uint32_t *)gmacdev->dma_base,
-			   dma_bus_mode, dma_reset_on);
+	nss_gmac_write_reg(gmacdev->dma_base, dma_bus_mode, dma_reset_on);
 	do {
 		msleep(DEFAULT_LOOP_VARIABLE);
 		data =
-		    nss_gmac_read_reg((uint32_t *)gmacdev->dma_base,
-				      dma_bus_mode);
+		    nss_gmac_read_reg(gmacdev->dma_base, dma_bus_mode);
 	} while (data & dma_reset_on);
 
 	msleep(1000);
-	data = nss_gmac_read_reg((uint32_t *)gmacdev->dma_base, dma_bus_mode);
+	data = nss_gmac_read_reg(gmacdev->dma_base, dma_bus_mode);
 
-	netdev_dbg(netdev, "GMAC reset completed in %d jiffies; dma_bus_mode - 0x%x", (int)(jiffies - reset_time), data);
+	netdev_dbg(netdev, "GMAC reset completed in %d jiffies; dma_bus_mode - 0x%x\n", (int)(jiffies - reset_time), data);
 }
 
 /*
@@ -286,8 +288,7 @@ void nss_gmac_reset(struct nss_gmac_dev *gmacdev)
 int32_t nss_gmac_dma_bus_mode_init(struct nss_gmac_dev *gmacdev,
 							uint32_t init_value)
 {
-	nss_gmac_write_reg((uint32_t *)gmacdev->dma_base, dma_bus_mode,
-			   init_value);
+	nss_gmac_write_reg(gmacdev->dma_base, dma_bus_mode, init_value);
 	return 0;
 }
 
@@ -303,8 +304,7 @@ int32_t nss_gmac_dma_bus_mode_init(struct nss_gmac_dev *gmacdev,
 int32_t nss_gmac_dma_axi_bus_mode_init(struct nss_gmac_dev *gmacdev,
 						uint32_t init_value)
 {
-	nss_gmac_write_reg((uint32_t *)gmacdev->dma_base, dma_axi_bus_mode,
-			   init_value);
+	nss_gmac_write_reg(gmacdev->dma_base, dma_axi_bus_mode, init_value);
 	return 0;
 }
 
@@ -320,8 +320,7 @@ int32_t nss_gmac_dma_axi_bus_mode_init(struct nss_gmac_dev *gmacdev,
 int32_t nss_gmac_dma_control_init(struct nss_gmac_dev *gmacdev,
 						uint32_t init_value)
 {
-	nss_gmac_write_reg((uint32_t *)gmacdev->dma_base, dma_control,
-			   init_value);
+	nss_gmac_write_reg(gmacdev->dma_base, dma_control, init_value);
 	return 0;
 }
 
@@ -336,7 +335,7 @@ int32_t nss_gmac_dma_control_init(struct nss_gmac_dev *gmacdev,
  */
 void nss_gmac_wd_enable(struct nss_gmac_dev *gmacdev)
 {
-	nss_gmac_clear_reg_bits((uint32_t *)gmacdev->mac_base,
+	nss_gmac_clear_reg_bits(gmacdev->mac_base,
 				gmac_config, gmac_watchdog);
 }
 
@@ -349,7 +348,7 @@ void nss_gmac_wd_enable(struct nss_gmac_dev *gmacdev)
  */
 void nss_gmac_jab_enable(struct nss_gmac_dev *gmacdev)
 {
-	nss_gmac_set_reg_bits((uint32_t *)gmacdev->mac_base,
+	nss_gmac_set_reg_bits(gmacdev->mac_base,
 			      gmac_config, gmac_jabber);
 }
 
@@ -362,7 +361,7 @@ void nss_gmac_jab_enable(struct nss_gmac_dev *gmacdev)
  */
 void nss_gmac_frame_burst_enable(struct nss_gmac_dev *gmacdev)
 {
-	nss_gmac_set_reg_bits((uint32_t *)gmacdev->mac_base,
+	nss_gmac_set_reg_bits(gmacdev->mac_base,
 			      gmac_config, gmac_frame_burst);
 }
 
@@ -375,7 +374,7 @@ void nss_gmac_frame_burst_enable(struct nss_gmac_dev *gmacdev)
  */
 void nss_gmac_jumbo_frame_enable(struct nss_gmac_dev *gmacdev)
 {
-	nss_gmac_set_reg_bits((uint32_t *)gmacdev->mac_base,
+	nss_gmac_set_reg_bits(gmacdev->mac_base,
 			      gmac_config, gmac_jumbo_frame);
 }
 
@@ -388,7 +387,7 @@ void nss_gmac_jumbo_frame_enable(struct nss_gmac_dev *gmacdev)
  */
 void nss_gmac_jumbo_frame_disable(struct nss_gmac_dev *gmacdev)
 {
-	nss_gmac_clear_reg_bits((uint32_t *)gmacdev->mac_base,
+	nss_gmac_clear_reg_bits(gmacdev->mac_base,
 				gmac_config, gmac_jumbo_frame);
 }
 
@@ -401,7 +400,7 @@ void nss_gmac_jumbo_frame_disable(struct nss_gmac_dev *gmacdev)
  */
 void nss_gmac_twokpe_frame_enable(struct nss_gmac_dev *gmacdev)
 {
-	nss_gmac_set_reg_bits((uint32_t *)gmacdev->mac_base,
+	nss_gmac_set_reg_bits(gmacdev->mac_base,
 			      gmac_config, gmac_twokpe);
 }
 
@@ -414,7 +413,7 @@ void nss_gmac_twokpe_frame_enable(struct nss_gmac_dev *gmacdev)
  */
 void nss_gmac_twokpe_frame_disable(struct nss_gmac_dev *gmacdev)
 {
-	nss_gmac_clear_reg_bits((uint32_t *)gmacdev->mac_base,
+	nss_gmac_clear_reg_bits(gmacdev->mac_base,
 				gmac_config, gmac_twokpe);
 }
 
@@ -427,7 +426,7 @@ void nss_gmac_twokpe_frame_disable(struct nss_gmac_dev *gmacdev)
  */
 void nss_gmac_disable_crs(struct nss_gmac_dev *gmacdev)
 {
-	nss_gmac_set_reg_bits((uint32_t *)gmacdev->mac_base,
+	nss_gmac_set_reg_bits(gmacdev->mac_base,
 			      gmac_config, gmac_disable_crs);
 }
 
@@ -440,7 +439,7 @@ void nss_gmac_disable_crs(struct nss_gmac_dev *gmacdev)
  */
 void nss_gmac_enable_crs(struct nss_gmac_dev *gmacdev)
 {
-	nss_gmac_clear_reg_bits((uint32_t *)gmacdev->mac_base,
+	nss_gmac_clear_reg_bits(gmacdev->mac_base,
 			      gmac_config, gmac_disable_crs);
 }
 
@@ -453,7 +452,7 @@ void nss_gmac_enable_crs(struct nss_gmac_dev *gmacdev)
  */
 void nss_gmac_select_gmii(struct nss_gmac_dev *gmacdev)
 {
-	nss_gmac_clear_reg_bits((uint32_t *)gmacdev->mac_base,
+	nss_gmac_clear_reg_bits(gmacdev->mac_base,
 				gmac_config, gmac_mii_gmii);
 }
 
@@ -466,16 +465,16 @@ void nss_gmac_select_gmii(struct nss_gmac_dev *gmacdev)
  */
 void nss_gmac_select_mii(struct nss_gmac_dev *gmacdev)
 {
-	nss_gmac_set_reg_bits((uint32_t *)gmacdev->mac_base,
+	nss_gmac_set_reg_bits(gmacdev->mac_base,
 			      gmac_config, gmac_mii_gmii);
 
-	if (gmacdev->speed == SPEED100) {
-		nss_gmac_set_reg_bits((uint32_t *)gmacdev->mac_base,
+	if (gmacdev->speed == SPEED_100) {
+		nss_gmac_set_reg_bits(gmacdev->mac_base,
 				      gmac_config, gmac_fe_speed100);
 		return;
 	}
 
-	nss_gmac_clear_reg_bits((uint32_t *)gmacdev->mac_base,
+	nss_gmac_clear_reg_bits(gmacdev->mac_base,
 				gmac_config, gmac_fe_speed100);
 }
 
@@ -487,7 +486,7 @@ void nss_gmac_select_mii(struct nss_gmac_dev *gmacdev)
  */
 void nss_gmac_rx_own_enable(struct nss_gmac_dev *gmacdev)
 {
-	nss_gmac_clear_reg_bits((uint32_t *)gmacdev->mac_base,
+	nss_gmac_clear_reg_bits(gmacdev->mac_base,
 				gmac_config, gmac_rx_own);
 }
 
@@ -500,7 +499,7 @@ void nss_gmac_rx_own_enable(struct nss_gmac_dev *gmacdev)
  */
 void nss_gmac_rx_own_disable(struct nss_gmac_dev *gmacdev)
 {
-	nss_gmac_set_reg_bits((uint32_t *)gmacdev->mac_base,
+	nss_gmac_set_reg_bits(gmacdev->mac_base,
 			      gmac_config, gmac_rx_own);
 }
 
@@ -511,7 +510,7 @@ void nss_gmac_rx_own_disable(struct nss_gmac_dev *gmacdev)
  */
 void nss_gmac_loopback_off(struct nss_gmac_dev *gmacdev)
 {
-	nss_gmac_clear_reg_bits((uint32_t *)gmacdev->mac_base,
+	nss_gmac_clear_reg_bits(gmacdev->mac_base,
 				gmac_config, gmac_loopback);
 }
 
@@ -522,7 +521,7 @@ void nss_gmac_loopback_off(struct nss_gmac_dev *gmacdev)
  */
 void nss_gmac_set_full_duplex(struct nss_gmac_dev *gmacdev)
 {
-	nss_gmac_set_reg_bits((uint32_t *)gmacdev->mac_base,
+	nss_gmac_set_reg_bits(gmacdev->mac_base,
 			      gmac_config, gmac_duplex);
 }
 
@@ -533,7 +532,7 @@ void nss_gmac_set_full_duplex(struct nss_gmac_dev *gmacdev)
  */
 void nss_gmac_set_half_duplex(struct nss_gmac_dev *gmacdev)
 {
-	nss_gmac_clear_reg_bits((uint32_t *)gmacdev->mac_base,
+	nss_gmac_clear_reg_bits(gmacdev->mac_base,
 				gmac_config, gmac_duplex);
 }
 
@@ -548,7 +547,7 @@ void nss_gmac_set_half_duplex(struct nss_gmac_dev *gmacdev)
  */
 void nss_gmac_retry_enable(struct nss_gmac_dev *gmacdev)
 {
-	nss_gmac_clear_reg_bits((uint32_t *)gmacdev->mac_base,
+	nss_gmac_clear_reg_bits(gmacdev->mac_base,
 				gmac_config, gmac_retry);
 }
 
@@ -562,7 +561,7 @@ void nss_gmac_retry_enable(struct nss_gmac_dev *gmacdev)
  */
 void nss_gmac_retry_disable(struct nss_gmac_dev *gmacdev)
 {
-	nss_gmac_set_reg_bits((uint32_t *)gmacdev->mac_base,
+	nss_gmac_set_reg_bits(gmacdev->mac_base,
 			      gmac_config, gmac_retry);
 }
 
@@ -574,7 +573,7 @@ void nss_gmac_retry_disable(struct nss_gmac_dev *gmacdev)
  */
 void nss_gmac_pad_crc_strip_disable(struct nss_gmac_dev *gmacdev)
 {
-	nss_gmac_clear_reg_bits((uint32_t *)gmacdev->mac_base,
+	nss_gmac_clear_reg_bits(gmacdev->mac_base,
 				gmac_config, gmac_pad_crc_strip);
 }
 
@@ -589,10 +588,10 @@ void nss_gmac_back_off_limit(struct nss_gmac_dev *gmacdev, uint32_t value)
 {
 	uint32_t data;
 
-	data = nss_gmac_read_reg((uint32_t *)gmacdev->mac_base, gmac_config);
+	data = nss_gmac_read_reg(gmacdev->mac_base, gmac_config);
 	data &= (~gmac_backoff_limit);
 	data |= value;
-	nss_gmac_write_reg((uint32_t *)gmacdev->mac_base, gmac_config, data);
+	nss_gmac_write_reg(gmacdev->mac_base, gmac_config, data);
 }
 
 /*
@@ -603,7 +602,7 @@ void nss_gmac_back_off_limit(struct nss_gmac_dev *gmacdev, uint32_t value)
  */
 void nss_gmac_deferral_check_disable(struct nss_gmac_dev *gmacdev)
 {
-	nss_gmac_clear_reg_bits((uint32_t *)gmacdev->mac_base,
+	nss_gmac_clear_reg_bits(gmacdev->mac_base,
 				gmac_config, gmac_deferral_check);
 }
 
@@ -614,7 +613,7 @@ void nss_gmac_deferral_check_disable(struct nss_gmac_dev *gmacdev)
  */
 void nss_gmac_rx_enable(struct nss_gmac_dev *gmacdev)
 {
-	nss_gmac_set_reg_bits((uint32_t *)gmacdev->mac_base, gmac_config,
+	nss_gmac_set_reg_bits(gmacdev->mac_base, gmac_config,
 			      gmac_rx);
 }
 
@@ -627,7 +626,7 @@ void nss_gmac_rx_enable(struct nss_gmac_dev *gmacdev)
  */
 void nss_gmac_rx_disable(struct nss_gmac_dev *gmacdev)
 {
-	nss_gmac_clear_reg_bits((uint32_t *)gmacdev->mac_base,
+	nss_gmac_clear_reg_bits(gmacdev->mac_base,
 				gmac_config, gmac_rx);
 
 }
@@ -639,7 +638,7 @@ void nss_gmac_rx_disable(struct nss_gmac_dev *gmacdev)
  */
 void nss_gmac_tx_enable(struct nss_gmac_dev *gmacdev)
 {
-	nss_gmac_set_reg_bits((uint32_t *)gmacdev->mac_base, gmac_config,
+	nss_gmac_set_reg_bits(gmacdev->mac_base, gmac_config,
 			      gmac_tx);
 }
 
@@ -652,7 +651,7 @@ void nss_gmac_tx_enable(struct nss_gmac_dev *gmacdev)
  */
 void nss_gmac_tx_disable(struct nss_gmac_dev *gmacdev)
 {
-	nss_gmac_clear_reg_bits((uint32_t *)gmacdev->mac_base,
+	nss_gmac_clear_reg_bits(gmacdev->mac_base,
 				gmac_config, gmac_tx);
 }
 
@@ -667,7 +666,7 @@ void nss_gmac_tx_disable(struct nss_gmac_dev *gmacdev)
  */
 void nss_gmac_frame_filter_enable(struct nss_gmac_dev *gmacdev)
 {
-	nss_gmac_clear_reg_bits((uint32_t *)gmacdev->mac_base,
+	nss_gmac_clear_reg_bits(gmacdev->mac_base,
 				gmac_frame_filter, gmac_filter);
 }
 
@@ -680,7 +679,7 @@ void nss_gmac_frame_filter_enable(struct nss_gmac_dev *gmacdev)
  */
 void nss_gmac_src_addr_filter_disable(struct nss_gmac_dev *gmacdev)
 {
-	nss_gmac_clear_reg_bits((uint32_t *)gmacdev->mac_base,
+	nss_gmac_clear_reg_bits(gmacdev->mac_base,
 				gmac_frame_filter, gmac_src_addr_filter);
 }
 
@@ -691,7 +690,7 @@ void nss_gmac_src_addr_filter_disable(struct nss_gmac_dev *gmacdev)
  */
 void nss_gmac_dst_addr_filter_normal(struct nss_gmac_dev *gmacdev)
 {
-	nss_gmac_clear_reg_bits((uint32_t *)gmacdev->mac_base,
+	nss_gmac_clear_reg_bits(gmacdev->mac_base,
 				gmac_frame_filter, gmac_dest_addr_filter_inv);
 }
 
@@ -710,10 +709,10 @@ void nss_gmac_set_pass_control(struct nss_gmac_dev *gmacdev,
 	uint32_t data;
 
 	data =
-	    nss_gmac_read_reg((uint32_t *)gmacdev->mac_base, gmac_frame_filter);
+	    nss_gmac_read_reg(gmacdev->mac_base, gmac_frame_filter);
 	data &= (~gmac_pass_control);
 	data |= passcontrol;
-	nss_gmac_write_reg((uint32_t *)gmacdev->mac_base, gmac_frame_filter,
+	nss_gmac_write_reg(gmacdev->mac_base, gmac_frame_filter,
 			   data);
 }
 
@@ -725,7 +724,7 @@ void nss_gmac_set_pass_control(struct nss_gmac_dev *gmacdev,
  */
 void nss_gmac_broadcast_enable(struct nss_gmac_dev *gmacdev)
 {
-	nss_gmac_clear_reg_bits((uint32_t *)gmacdev->mac_base,
+	nss_gmac_clear_reg_bits(gmacdev->mac_base,
 				gmac_frame_filter, gmac_broadcast);
 }
 
@@ -737,7 +736,7 @@ void nss_gmac_broadcast_enable(struct nss_gmac_dev *gmacdev)
  */
 void nss_gmac_multicast_enable(struct nss_gmac_dev *gmacdev)
 {
-	nss_gmac_set_reg_bits((uint32_t *)gmacdev->mac_base,
+	nss_gmac_set_reg_bits(gmacdev->mac_base,
 			      gmac_frame_filter, gmac_multicast_filter);
 }
 
@@ -749,7 +748,7 @@ void nss_gmac_multicast_enable(struct nss_gmac_dev *gmacdev)
  */
 void nss_gmac_multicast_disable(struct nss_gmac_dev *gmacdev)
 {
-	nss_gmac_clear_reg_bits((uint32_t *)gmacdev->mac_base,
+	nss_gmac_clear_reg_bits(gmacdev->mac_base,
 				gmac_frame_filter, gmac_multicast_filter);
 }
 
@@ -763,7 +762,7 @@ void nss_gmac_multicast_disable(struct nss_gmac_dev *gmacdev)
  */
 void nss_gmac_multicast_hash_filter_disable(struct nss_gmac_dev *gmacdev)
 {
-	nss_gmac_clear_reg_bits((uint32_t *)gmacdev->mac_base,
+	nss_gmac_clear_reg_bits(gmacdev->mac_base,
 				gmac_frame_filter, gmac_mcast_hash_filter);
 }
 
@@ -776,7 +775,7 @@ void nss_gmac_multicast_hash_filter_disable(struct nss_gmac_dev *gmacdev)
  */
 void nss_gmac_promisc_enable(struct nss_gmac_dev *gmacdev)
 {
-	nss_gmac_set_reg_bits((uint32_t *)gmacdev->mac_base,
+	nss_gmac_set_reg_bits(gmacdev->mac_base,
 			      gmac_frame_filter, gmac_promiscuous_mode);
 }
 
@@ -788,7 +787,7 @@ void nss_gmac_promisc_enable(struct nss_gmac_dev *gmacdev)
  */
 void nss_gmac_promisc_disable(struct nss_gmac_dev *gmacdev)
 {
-	nss_gmac_clear_reg_bits((uint32_t *)gmacdev->mac_base,
+	nss_gmac_clear_reg_bits(gmacdev->mac_base,
 				gmac_frame_filter, gmac_promiscuous_mode);
 }
 
@@ -801,7 +800,7 @@ void nss_gmac_promisc_disable(struct nss_gmac_dev *gmacdev)
  */
 void nss_gmac_unicast_hash_filter_disable(struct nss_gmac_dev *gmacdev)
 {
-	nss_gmac_clear_reg_bits((uint32_t *)gmacdev->mac_base,
+	nss_gmac_clear_reg_bits(gmacdev->mac_base,
 				gmac_frame_filter, gmac_ucast_hash_filter);
 }
 
@@ -815,7 +814,7 @@ void nss_gmac_unicast_hash_filter_disable(struct nss_gmac_dev *gmacdev)
  */
 void nss_gmac_unicast_pause_frame_detect_disable(struct nss_gmac_dev *gmacdev)
 {
-	nss_gmac_clear_reg_bits((uint32_t *)gmacdev->mac_base,
+	nss_gmac_clear_reg_bits(gmacdev->mac_base,
 				gmac_flow_control, gmac_unicast_pause_frame);
 }
 
@@ -827,7 +826,7 @@ void nss_gmac_unicast_pause_frame_detect_disable(struct nss_gmac_dev *gmacdev)
  */
 void nss_gmac_rx_flow_control_disable(struct nss_gmac_dev *gmacdev)
 {
-	nss_gmac_clear_reg_bits((uint32_t *)gmacdev->mac_base,
+	nss_gmac_clear_reg_bits(gmacdev->mac_base,
 				gmac_flow_control, gmac_rx_flow_control);
 }
 
@@ -841,7 +840,7 @@ void nss_gmac_rx_flow_control_disable(struct nss_gmac_dev *gmacdev)
  */
 void nss_gmac_tx_flow_control_disable(struct nss_gmac_dev *gmacdev)
 {
-	nss_gmac_clear_reg_bits((uint32_t *)gmacdev->mac_base,
+	nss_gmac_clear_reg_bits(gmacdev->mac_base,
 			gmac_flow_control, gmac_tx_flow_control);
 }
 
@@ -853,10 +852,25 @@ void nss_gmac_tx_flow_control_disable(struct nss_gmac_dev *gmacdev)
  */
 void nss_gmac_tx_pause_enable(struct nss_gmac_dev *gmacdev)
 {
-	netdev_dbg(gmacdev->netdev, "%s: enable Tx flow control", __func__);
+	netdev_dbg(gmacdev->netdev, "%s: enable Tx flow control\n", __func__);
 
-	nss_gmac_set_reg_bits((uint32_t *)gmacdev->mac_base,
-			      gmac_flow_control, gmac_tx_flow_control);
+	if (gmacdev->data_plane_ops->pause_on_off(gmacdev->data_plane_ctx, 1)
+							!= NSS_GMAC_SUCCESS) {
+		netdev_dbg(gmacdev->netdev, "%s: tx flow control enable failed\n", __func__);
+		return;
+	}
+
+	/*
+	 * We set the DFF bit to convert GMAC DMA FIFO behavior from head
+	 * drop to tail drop. This gives us extra room to store frames before
+	 * we start sending pause frames and achieve 0 drops for high rate flows
+	 * with 64 bytes frames.
+	 */
+	nss_gmac_set_reg_bits(gmacdev->dma_base, dma_control,
+				dma_rx_frame_flush);
+
+	nss_gmac_set_reg_bits(gmacdev->mac_base,
+			      gmac_flow_control, NSS_GMAC_PAUSE_TIME | gmac_tx_flow_control);
 }
 
 /*
@@ -866,9 +880,18 @@ void nss_gmac_tx_pause_enable(struct nss_gmac_dev *gmacdev)
  */
 void nss_gmac_tx_pause_disable(struct nss_gmac_dev *gmacdev)
 {
-	netdev_dbg(gmacdev->netdev, "%s: disable Tx flow control", __func__);
+	netdev_dbg(gmacdev->netdev, "%s: disable Tx flow control\n", __func__);
 
-	nss_gmac_clear_reg_bits((uint32_t *)gmacdev->mac_base,
+	if (gmacdev->data_plane_ops->pause_on_off(gmacdev->data_plane_ctx, 0)
+							!= NSS_GMAC_SUCCESS) {
+		netdev_dbg(gmacdev->netdev, "%s: tx flow control disable failed\n", __func__);
+		return;
+	}
+
+	nss_gmac_clear_reg_bits(gmacdev->dma_base, dma_control,
+				dma_rx_frame_flush);
+
+	nss_gmac_clear_reg_bits(gmacdev->mac_base,
 				gmac_flow_control, gmac_tx_flow_control);
 
 }
@@ -881,15 +904,111 @@ void nss_gmac_tx_pause_disable(struct nss_gmac_dev *gmacdev)
  */
 void nss_gmac_rx_pause_enable(struct nss_gmac_dev *gmacdev)
 {
-	netdev_dbg(gmacdev->netdev, "%s: enable Rx flow control", __func__);
+	netdev_dbg(gmacdev->netdev, "%s: enable Rx flow control\n", __func__);
 
-	nss_gmac_clear_reg_bits((uint32_t *)gmacdev->dma_base, dma_control,
-			dma_en_hw_flow_ctrl | dma_rx_flow_ctrl_act3K |
-			dma_rx_flow_ctrl_deact4K);
+	/*
+	 * We set the DFF bit to convert GMAC DMA FIFO behavior from head
+	 * drop to tail drop. This gives us extra room to store frames before
+	 * we start sending pause frames and achieve 0 drops for high rate flows
+	 * with 64 bytes frames.
+	 */
+	nss_gmac_set_reg_bits(gmacdev->dma_base, dma_control,
+				dma_rx_frame_flush);
 
-	nss_gmac_set_reg_bits((uint32_t *)gmacdev->mac_base,
-			      gmac_flow_control, gmac_rx_flow_control);
+	nss_gmac_set_reg_bits(gmacdev->mac_base,
+				gmac_flow_control, gmac_rx_flow_control);
 }
+
+/*
+ * This enables timestamp generation config options.
+ * @param[in] pointer to nss_gmac_dev.
+ * @param[in] flag for ptp/ntp protocol selectoin.
+ * @return returns 0 for Success, -1 for error.
+ */
+int32_t nss_gmac_ts_enable(struct nss_gmac_dev *gmacdev)
+{
+	uint32_t data, timeout;
+#ifdef CONFIG_OF
+	uint32_t *nss_base = (uint32_t *)(gmacdev->ctx->nss_base);
+#endif
+
+	nss_gmac_set_reg_bits(gmacdev->mac_base, gmac_interrupt_mask, gmac_ts_int_mask);
+	nss_gmac_set_reg_bits(gmacdev->mac_base, gmac_ts_control, gmac_ts_ena_mask);
+
+#ifdef CONFIG_OF
+	/*
+	 * The following selects the Aux Reference clock instead of the primary to
+	 * clock the timestamp module.
+	 */
+	if (gmacdev->aux_clk_freq) {
+		nss_gmac_set_reg_bits(nss_base , NSS_ETH_CLK_SRC_CTL, 1 << NSS_GMAC_AUX_CLK_MASK);
+		/*
+		 * The value programmed in this field is accumalated every clock cycle
+		 * with the contents of sub-seconds register.
+		 * Aux Reference clock is 100 MHz, i.e 100000000 Hz
+		 * Value taken is BILLION/100000000 which is 0xa
+		 */
+		nss_gmac_write_reg(gmacdev->mac_base, gmac_ts_sub_sec_incr, (BILLION / gmacdev->aux_clk_freq));
+	}
+#endif
+
+	/*
+	 * The value programmed in this field is accumulated every clock cycle
+	 * with the contents of the sub-second register
+	 * Aux Reference clock is 100 Mhz,100 MHz = 10 nsecs.
+	 * 10 (dec) = 0xa (Hex)
+	 */
+	nss_gmac_write_reg(gmacdev->mac_base, gmac_ts_sub_sec_incr, NSS_GMAC_SUB_SEC_VALUE);
+
+	/* Select Coarse Update Method for timestamp updation */
+	nss_gmac_clear_reg_bits(gmacdev->mac_base, gmac_ts_control, gmac_ts_cf_updt_mask);
+
+	/* Initialize the system-time maintained by the MAC in seconds and nanoseconds */
+	nss_gmac_write_reg(gmacdev->mac_base, gmac_ts_high_update, 0x0);
+	nss_gmac_write_reg(gmacdev->mac_base, gmac_ts_low_update, 0x0);
+
+	/*
+	 * Set the Rollover control register to roll over the seconds register after
+	 * nanosecond counts 0x3b9a-c9ff i.e, 1 nanoseconds accuracy
+	 */
+	nss_gmac_set_reg_bits(gmacdev->mac_base, gmac_ts_control, gmac_ts_tsctrlssr_mask);
+
+	/* Enable timestamping of ipv6 packets	*/
+	nss_gmac_set_reg_bits(gmacdev->mac_base, gmac_ts_control, gmac_ts_ipv6ena_mask);
+
+	/* Timestamp all incoming packets */
+	nss_gmac_set_reg_bits(gmacdev->mac_base, gmac_ts_control, gmac_ts_enall_mask);
+
+	/* Loop until bit is set or Timeout happens */
+	timeout = DEFAULT_LOOP_VARIABLE;
+	do {
+		timeout--;
+		data = nss_gmac_read_reg(gmacdev->mac_base, gmac_ts_control);
+		usleep_range(NSS_GMAC_TS_ENABLE_MIN_USLEEP, NSS_GMAC_TS_ENABLE_MAX_USLEEP);
+	} while ((data & gmac_ts_init_mask) && timeout > 0);
+
+	if (timeout == 0) {
+		netdev_dbg(gmacdev->netdev, "%s: Timestamp enable timed out\n", __func__);
+		return -1;
+	}
+
+	netdev_dbg(gmacdev->netdev, "%s: Timestamp enabled\n", __func__);
+	nss_gmac_set_reg_bits(gmacdev->mac_base, gmac_ts_control, gmac_ts_init_mask);
+	gmacdev->drv_flags |= NSS_GMAC_PRIV_FLAG(TSTAMP);
+	set_bit(__NSS_GMAC_TSTAMP, &gmacdev->flags);
+	return 0;
+};
+
+/*
+ * This disables timestamp generation config options.
+ * @param[in] pointer to nss_gmac_dev.
+ * @return void.
+ */
+void nss_gmac_ts_disable (struct nss_gmac_dev *gmacdev)
+{
+	nss_gmac_clear_reg_bits(gmacdev->mac_base, gmac_ts_control, gmac_ts_init_mask);
+	clear_bit(__NSS_GMAC_TSTAMP, &gmacdev->flags);
+};
 
 /*
  * Disable pause frame generation.
@@ -898,15 +1017,14 @@ void nss_gmac_rx_pause_enable(struct nss_gmac_dev *gmacdev)
  */
 void nss_gmac_rx_pause_disable(struct nss_gmac_dev *gmacdev)
 {
-	netdev_dbg(gmacdev->netdev, "%s: disable Rx flow control", __func__);
+	netdev_dbg(gmacdev->netdev, "%s: disable Rx flow control\n", __func__);
 
-	nss_gmac_clear_reg_bits((uint32_t *)gmacdev->dma_base,
-				dma_control, dma_en_hw_flow_ctrl);
+	nss_gmac_clear_reg_bits(gmacdev->dma_base,dma_control,
+				dma_rx_frame_flush);
 
-	nss_gmac_clear_reg_bits((uint32_t *)gmacdev->mac_base,
+	nss_gmac_clear_reg_bits(gmacdev->mac_base,
 				gmac_flow_control, gmac_rx_flow_control);
 }
-
 
 /*
  * Flush Dma Tx fifo.
@@ -915,8 +1033,8 @@ void nss_gmac_rx_pause_disable(struct nss_gmac_dev *gmacdev)
  */
 void nss_gmac_flush_tx_fifo(struct nss_gmac_dev *gmacdev)
 {
-	nss_gmac_set_reg_bits((uint32_t *)gmacdev->dma_base,
-				dma_control, dma_flush_tx_fifo);
+	nss_gmac_set_reg_bits(gmacdev->dma_base, dma_control,
+						dma_flush_tx_fifo);
 }
 
 /*
@@ -928,7 +1046,7 @@ void nss_gmac_config_flow_control(struct nss_gmac_dev *gmacdev)
 {
 	uint16_t phyreg;
 
-	netdev_dbg(gmacdev->netdev, "%s:", __func__);
+	netdev_dbg(gmacdev->netdev, "%s:\n", __func__);
 
 	if (gmacdev->pause == 0) {
 		nss_gmac_rx_pause_disable(gmacdev);
@@ -941,7 +1059,7 @@ void nss_gmac_config_flow_control(struct nss_gmac_dev *gmacdev)
 	if (phyreg & LPA_PAUSE_CAP) {
 		/* link partner can do Tx/Rx flow control */
 		netdev_dbg(gmacdev->netdev,
-			      "%s: Link partner supports Tx/Rx flow control",
+			      "%s: Link partner supports Tx/Rx flow control\n",
 			      __func__);
 
 		if (gmacdev->pause & FLOW_CTRL_RX)
@@ -956,7 +1074,7 @@ void nss_gmac_config_flow_control(struct nss_gmac_dev *gmacdev)
 	if (phyreg & LPA_PAUSE_ASYM) {
 		/* link partner can do Rx flow control only */
 		netdev_dbg(gmacdev->netdev,
-			      "%s: Link partner supports Rx flow control only",
+			      "%s: Link partner supports Rx flow control only\n",
 			      __func__);
 
 		/* disable Rx flow control as link
@@ -971,7 +1089,7 @@ void nss_gmac_config_flow_control(struct nss_gmac_dev *gmacdev)
 
 	/* link partner does not support Tx/Rx flow control */
 	netdev_dbg(gmacdev->netdev,
-		      "%s: Link partner does not support Tx/Rx flow control",
+		      "%s: Link partner does not support Tx/Rx flow control\n",
 		      __func__);
 	nss_gmac_rx_flow_control_disable(gmacdev);
 	nss_gmac_tx_flow_control_disable(gmacdev);
@@ -992,13 +1110,22 @@ void nss_gmac_ipc_offload_init(struct nss_gmac_dev *gmacdev)
 		 * payload.
 		 */
 		nss_gmac_rx_tcpip_chksum_drop_enable(gmacdev);
-		netdev_dbg(gmacdev->netdev, "%s: enable Rx checksum", __func__);
+		netdev_dbg(gmacdev->netdev, "%s: enable Rx checksum\n", __func__);
 	} else {
 		nss_gmac_disable_rx_chksum_offload(gmacdev);
-		netdev_dbg(gmacdev->netdev, "%s: disable Rx checksum", __func__);
+		netdev_dbg(gmacdev->netdev, "%s: disable Rx checksum\n", __func__);
 	}
 }
 
+/*
+ * Make MMC stats Clear-on-Read
+ * @param[in] pointer to nss_gmac_dev.
+ * @return void
+ */
+void nss_gmac_mmc_stats_cor_enable(struct nss_gmac_dev *gmacdev)
+{
+	nss_gmac_set_reg_bits(gmacdev->mac_base, gmac_mmc_cntrl, gmac_mmc_cor);
+}
 
 /*
  * Mac initialization sequence.
@@ -1014,12 +1141,12 @@ void nss_gmac_mac_init(struct nss_gmac_dev *gmacdev)
 	nss_gmac_frame_burst_enable(gmacdev);
 	nss_gmac_loopback_off(gmacdev);
 
-	if (gmacdev->speed == SPEED1000)
+	if (gmacdev->speed == SPEED_1000)
 		nss_gmac_select_gmii(gmacdev);
 	else
 		nss_gmac_select_mii(gmacdev);
 
-	if (gmacdev->duplex_mode == FULLDUPLEX) {
+	if (gmacdev->duplex_mode == DUPLEX_FULL) {
 		nss_gmac_set_full_duplex(gmacdev);
 		nss_gmac_rx_own_enable(gmacdev);
 		nss_gmac_retry_disable(gmacdev);
@@ -1051,6 +1178,7 @@ void nss_gmac_mac_init(struct nss_gmac_dev *gmacdev)
 	nss_gmac_unicast_hash_filter_disable(gmacdev);
 
 	nss_gmac_ipc_offload_init(gmacdev);
+	nss_gmac_mmc_stats_cor_enable(gmacdev);
 
 	/* Flow Control Configuration */
 	nss_gmac_unicast_pause_frame_detect_disable(gmacdev);
@@ -1070,7 +1198,7 @@ static void nss_gmac_check_pcs_status(struct nss_gmac_dev *gmacdev)
 
 	ctx = gmacdev->ctx;
 	qsgmii_base = ctx->qsgmii_base;
-	id = gmacdev->macid;
+	id = gmacdev->sgmii_pcs_chanid;
 
 	gmacdev->link_state = LINKDOWN;
 
@@ -1083,22 +1211,22 @@ static void nss_gmac_check_pcs_status(struct nss_gmac_dev *gmacdev)
 
 	/* save duplexity */
 	if (reg & PCS_MAC_STAT_CHn_DUPLEX(id))
-		gmacdev->duplex_mode = FULLDUPLEX;
+		gmacdev->duplex_mode = DUPLEX_FULL;
 	else
-		gmacdev->duplex_mode = HALFDUPLEX;
+		gmacdev->duplex_mode = DUPLEX_HALF;
 
 	/* save speed */
 	switch (PCS_MAC_STAT_CHn_SPEED(id, reg)) {
 	case 0:
-		gmacdev->speed = SPEED10;
+		gmacdev->speed = SPEED_10;
 		break;
 
 	case 1:
-		gmacdev->speed = SPEED100;
+		gmacdev->speed = SPEED_100;
 		break;
 
 	case 2:
-		gmacdev->speed = SPEED1000;
+		gmacdev->speed = SPEED_1000;
 		break;
 	}
 }
@@ -1124,7 +1252,7 @@ static void nss_gmac_check_sgmii_link(struct nss_gmac_dev *gmacdev)
 
 	ctx = gmacdev->ctx;
 	qsgmii_base = ctx->qsgmii_base;
-	id = gmacdev->macid;
+	id = gmacdev->sgmii_pcs_chanid;
 
 	previous_linkup_speed = gmacdev->speed;
 	previous_linkup_duplex = gmacdev->duplex_mode;
@@ -1133,7 +1261,7 @@ reheck_pcs_mac_status:
 	nss_gmac_check_pcs_status(gmacdev);
 	if (gmacdev->link_state == LINKDOWN) {
 		if (gmacdev->phydev->link) {
-			netdev_dbg(gmacdev->netdev, "SGMII PCS error. Resetting PHY using MDIO");
+			netdev_dbg(gmacdev->netdev, "SGMII PCS error. Resetting PHY using MDIO\n");
 			phy_write(gmacdev->phydev, MII_BMCR,
 				BMCR_RESET | phy_read(gmacdev->phydev, MII_BMCR));
 		}
@@ -1159,7 +1287,7 @@ reheck_pcs_mac_status:
 
 	/* handle autoneg timeout */
 	if (timeout == 0) {
-		netdev_dbg(gmacdev->netdev, "%s: PCS ch %d autoneg timeout",
+		netdev_dbg(gmacdev->netdev, "%s: PCS ch %d autoneg timeout\n",
 							__func__, id);
 		timeout_count++;
 		if (timeout_count == 2) {
@@ -1170,14 +1298,14 @@ reheck_pcs_mac_status:
 		}
 		goto reheck_pcs_mac_status;
 	}
-	netdev_dbg(gmacdev->netdev, "%s: PCS ch %d autoneg complete",
+	netdev_dbg(gmacdev->netdev, "%s: PCS ch %d autoneg complete\n",
 							__func__, id);
 
 	nss_gmac_check_pcs_status(gmacdev);
 
 	if ((gmacdev->link_state == LINKDOWN) || (new_speed != gmacdev->speed)) {
 		gmacdev->link_state = LINKDOWN;
-			netdev_dbg(gmacdev->netdev, "SGMII PCS error. Resetting PHY using MDIO");
+			netdev_dbg(gmacdev->netdev, "SGMII PCS error. Resetting PHY using MDIO\n");
 			phy_write(gmacdev->phydev, MII_BMCR,
 				BMCR_RESET | phy_read(gmacdev->phydev, MII_BMCR));
 		return;
@@ -1204,108 +1332,93 @@ reheck_pcs_mac_status:
 int32_t nss_gmac_check_phy_init(struct nss_gmac_dev *gmacdev)
 {
 	struct phy_device *phydev = NULL;
-	int32_t count;
+	uint32_t phy_link_speed;
+	uint32_t phy_link_duplex;
 
 	/*
-	 * If link polling is disabled, we need to use the forced speed
-	 * and duplex configured for the interface.
+	 * We cannot have link polling off without forced speed configured!
 	 */
 	if (!test_bit(__NSS_GMAC_LINKPOLL, &gmacdev->flags)
-					&& !gmacdev->emulation) {
-		if (gmacdev->forced_speed != SPEED_UNKNOWN) {
-			gmacdev->speed = gmacdev->forced_speed;
-			gmacdev->duplex_mode = gmacdev->forced_duplex;
-			return 0;
-		} else {
-			netdev_dbg(gmacdev->netdev, "%s: Invalid forced speed/duplex configuration with link polling disabled"
-								, __func__);
-			return -EIO;
+		&& (gmacdev->forced_speed == SPEED_UNKNOWN)) {
+		netdev_dbg(gmacdev->netdev,
+				"%s: Forced link speed not configured when link polling disabled\n",
+				__func__);
+		return -EIO;
+	}
+
+	/*
+	 * First read the PHY speed/duplex if link polling
+	 * is enabled
+	 */
+	if (test_bit(__NSS_GMAC_LINKPOLL, &gmacdev->flags)) {
+		phydev = gmacdev->phydev;
+		if (gmacdev->phydev->is_c45 == false) {
+			/*
+			 * Read the speed/duplex for standard C22 PHYs
+			 */
+			genphy_read_status(phydev);
 		}
 	}
 
-	if (gmacdev->emulation && (gmacdev->phy_mii_type == PHY_INTERFACE_MODE_SGMII
-			|| gmacdev->phy_mii_type == PHY_INTERFACE_MODE_QSGMII)) {
-		/* Emulation build, Q/SGMII interface. Returning 100Mbps FD */
-		gmacdev->speed = SPEED100;
-		gmacdev->duplex_mode = FULLDUPLEX;
+	/*
+	 * Now find the GMAC speed. Check if we have a forced speed
+	 * and duplex configured for the GMAC.
+	 */
+	if (gmacdev->forced_speed != SPEED_UNKNOWN) {
+		/*
+		 * Set the GMAC speed as configured
+		 */
+		gmacdev->speed = gmacdev->forced_speed;
+		gmacdev->duplex_mode = gmacdev->forced_duplex;
+
 		goto out;
 	}
 
+
+	/*
+	 * Get the GMAC speed from the SGMII PCS for SGMII/QSGMII
+	 * interfaces
+	 */
 	if (gmacdev->phy_mii_type == PHY_INTERFACE_MODE_SGMII
 		|| gmacdev->phy_mii_type == PHY_INTERFACE_MODE_QSGMII) {
 		nss_gmac_check_sgmii_link(gmacdev);
 		if (gmacdev->link_state == LINKDOWN) {
-			netdev_dbg(gmacdev->netdev, "%s: SGMII phy linkup ERROR."
+			netdev_dbg(gmacdev->netdev, "%s: SGMII phy linkup ERROR.\n"
 								, __func__);
 			return -EIO;
 		}
 
-		netdev_dbg(gmacdev->netdev, "%s: SGMII phy linkup OK.",
+		netdev_dbg(gmacdev->netdev, "%s: SGMII phy linkup OK.\n",
 								__func__);
 		goto out;
 	}
 
 	/*
-	 * Read the link status from the PHY for RGMII interfaces
-	 * with link polling enabled.
+	 * Get the GMAC speed from the PHY for RGMII
+	 * interfaces
 	 */
-	phydev = gmacdev->phydev;
-
-	for (count = 0; count < DEFAULT_LOOP_VARIABLE; count++) {
-		if (phydev->state == PHY_RUNNING) {
-			netdev_dbg(gmacdev->netdev, "%s: %s Autoneg. complete",
-				      __func__, gmacdev->netdev->name);
-			break;
-		}
-	}
-
-	if (count == DEFAULT_LOOP_VARIABLE) {
-		netdev_dbg(gmacdev->netdev, "%s: %s Timeout waiting for autoneg.",
-			      __func__, gmacdev->netdev->name);
-		return -EIO;
-	}
-
-	genphy_read_status(phydev);
-
-	switch (phydev->speed) {
-	case SPEED_10:
-		gmacdev->speed = SPEED10;
-		break;
-
-	case SPEED_100:
-		gmacdev->speed = SPEED100;
-		break;
-
-	case SPEED_1000:
-		gmacdev->speed = SPEED1000;
-		break;
-	}
-
-	switch (phydev->duplex) {
-	case DUPLEX_HALF:
-		gmacdev->duplex_mode = HALFDUPLEX;
-		break;
-
-	case DUPLEX_FULL:
-		gmacdev->duplex_mode = FULLDUPLEX;
-		break;
+	if (phydev) {
+		gmacdev->speed = phydev->speed;
+		gmacdev->duplex_mode = phydev->duplex;
 	}
 
 out:
-	netdev_info(gmacdev->netdev, "%sMbps %sDuplex",
-			(gmacdev->speed == SPEED1000) ?
-			"1000" : ((gmacdev->speed == SPEED100) ? "100" : "10"),
-			(gmacdev->duplex_mode == FULLDUPLEX) ? "Full" : "Half");
-
 	/*
-	 * We may want to force speed and duplex settings even after link
-	 * polling. This may be for a GMAC connected to a switch where the
-	 * parameters of link between GAMC and switch are forced.
+	 * If link polling is on, print the link speed from PHY
+	 * Otherwise the link speed must have been forced, so
+	 * print the GMAC (xMII) forced speed
 	 */
-	if (gmacdev->forced_speed != SPEED_UNKNOWN) {
-		gmacdev->speed = gmacdev->forced_speed;
-		gmacdev->duplex_mode = gmacdev->forced_duplex;
+	if (test_bit(__NSS_GMAC_LINKPOLL, &gmacdev->flags) && phydev) {
+		phy_link_speed = phydev->speed;
+		phy_link_duplex = phydev->duplex;
+	} else {
+		phy_link_speed = gmacdev->speed;
+		phy_link_duplex = gmacdev->duplex_mode;
 	}
+
+	netdev_info(gmacdev->netdev,
+			"%d Mbps %s Duplex\n",
+			phy_link_speed, (phy_link_duplex == DUPLEX_FULL) ? "Full" : "Half");
 
 	return 0;
 }
@@ -1409,15 +1522,15 @@ void nss_gmac_set_mac_addr(struct nss_gmac_dev *gmacdev, uint32_t mac_high,
 {
 	uint32_t data;
 
-	netdev_dbg(gmacdev->netdev, "Set addr %02x:%02x:%02x:%02x:%02x:%02x",
+	netdev_dbg(gmacdev->netdev, "Set addr %02x:%02x:%02x:%02x:%02x:%02x\n",
 		      mac_addr[0], mac_addr[1], mac_addr[2],
 		      mac_addr[3], mac_addr[4], mac_addr[5]);
 
 	data = (mac_addr[5] << 8) | mac_addr[4] | 0x80000000;
-	nss_gmac_write_reg((uint32_t *)gmacdev->mac_base, mac_high, data);
+	nss_gmac_write_reg(gmacdev->mac_base, mac_high, data);
 	data = (mac_addr[3] << 24) | (mac_addr[2] << 16)
 	    | (mac_addr[1] << 8) | mac_addr[0];
-	nss_gmac_write_reg((uint32_t *)gmacdev->mac_base, mac_low, data);
+	nss_gmac_write_reg(gmacdev->mac_base, mac_low, data);
 }
 
 /*
@@ -1434,11 +1547,11 @@ void nss_gmac_get_mac_addr(struct nss_gmac_dev *gmacdev, uint32_t mac_high,
 {
 	uint32_t data;
 
-	data = nss_gmac_read_reg((uint32_t *)gmacdev->mac_base, mac_high);
+	data = nss_gmac_read_reg(gmacdev->mac_base, mac_high);
 	mac_addr[5] = (data >> 8) & 0xff;
 	mac_addr[4] = (data) & 0xff;
 
-	data = nss_gmac_read_reg((uint32_t *)gmacdev->mac_base, mac_low);
+	data = nss_gmac_read_reg(gmacdev->mac_base, mac_low);
 	mac_addr[3] = (data >> 24) & 0xff;
 	mac_addr[2] = (data >> 16) & 0xff;
 	mac_addr[1] = (data >> 8) & 0xff;
@@ -1463,19 +1576,19 @@ int32_t nss_gmac_attach(struct nss_gmac_dev *gmacdev,
 	/*Populate the mac and dma base addresses */
 	gmacdev->memres = request_mem_region(reg_base, reglen, netdev->name);
 	if (!gmacdev->memres) {
-		netdev_dbg(netdev, "Unable to request resource.");
+		netdev_dbg(netdev, "Unable to request resource.\n");
 		return -EIO;
 	}
 
 	/* ioremap addresses */
-	gmacdev->mac_base = (uint32_t)ioremap_nocache(reg_base,
+	gmacdev->mac_base = ioremap_nocache(reg_base,
 						      NSS_GMAC_REG_BLOCK_LEN);
 	if (!gmacdev->mac_base) {
-		netdev_dbg(netdev, "ioremap fail.");
+		netdev_dbg(netdev, "ioremap fail.\n");
 		return -EIO;
 	}
 
-	netdev_dbg(netdev, "ioremap OK. Size 0x%x. reg_base 0x%x. mac_base 0x%x.",
+	netdev_dbg(netdev, "ioremap OK. Size 0x%x. reg_base 0x%x. mac_base 0x%p.\n",
 		      NSS_GMAC_REG_BLOCK_LEN, reg_base, gmacdev->mac_base);
 
 	gmacdev->dma_base = gmacdev->mac_base + NSS_GMAC_DMABASE;
@@ -1515,8 +1628,8 @@ void nss_gmac_detach(struct nss_gmac_dev *gmacdev)
  */
 void nss_gmac_init_rx_desc_base(struct nss_gmac_dev *gmacdev)
 {
-	nss_gmac_write_reg((uint32_t *)gmacdev->dma_base,
-			   dma_rx_base_addr, (uint32_t)gmacdev->rx_desc_dma);
+	nss_gmac_write_reg(gmacdev->dma_base, dma_rx_base_addr,
+					(uint32_t)gmacdev->rx_desc_dma);
 }
 
 /*
@@ -1529,8 +1642,8 @@ void nss_gmac_init_rx_desc_base(struct nss_gmac_dev *gmacdev)
  */
 void nss_gmac_init_tx_desc_base(struct nss_gmac_dev *gmacdev)
 {
-	nss_gmac_write_reg((uint32_t *)gmacdev->dma_base,
-			   dma_tx_base_addr, (uint32_t)gmacdev->tx_desc_dma);
+	nss_gmac_write_reg(gmacdev->dma_base, dma_tx_base_addr,
+					(uint32_t)gmacdev->tx_desc_dma);
 }
 
 /*
@@ -1725,24 +1838,24 @@ bool nss_gmac_is_rx_frame_length_errors(uint32_t status)
  * @return returns void.
  */
 void nss_gmac_get_desc_data(struct dma_desc *desc,
-			    uint32_t *Status, uint32_t *Buffer1,
-			    uint32_t *Length1, uint32_t *Data1)
+			    uint32_t *status, uint32_t *buffer1,
+			    uint32_t *length1, uint32_t *opaque)
 {
 	/*
 	 * The first time, we map the descriptor as DMA_TO_DEVICE.
 	 * Then we only wait for changes from device, so we use DMA_FROM_DEVICE.
 	 */
-	if (Status != 0)
-		*Status = desc->status;
+	if (status != 0)
+		*status = desc->status;
 
-	if (Buffer1 != 0)
-		*Buffer1 = desc->buffer1;
+	if (buffer1 != 0)
+		*buffer1 = desc->buffer1;
 
-	if (Length1 != 0)
-		*Length1 = (desc->length & desc_size1_mask) >> desc_size1_shift;
+	if (length1 != 0)
+		*length1 = (desc->length & desc_size1_mask) >> desc_size1_shift;
 
-	if (Data1 != 0)
-		*Data1 = desc->data1;
+	if (opaque != 0)
+		*opaque = desc->reserved1;
 }
 
 /*
@@ -1754,9 +1867,9 @@ void nss_gmac_enable_dma_rx(struct nss_gmac_dev *gmacdev)
 {
 	uint32_t data;
 
-	data = nss_gmac_read_reg((uint32_t *)gmacdev->dma_base, dma_control);
+	data = nss_gmac_read_reg(gmacdev->dma_base, dma_control);
 	data |= dma_rx_start;
-	nss_gmac_write_reg((uint32_t *)gmacdev->dma_base, dma_control, data);
+	nss_gmac_write_reg(gmacdev->dma_base, dma_control, data);
 }
 
 /*
@@ -1768,9 +1881,9 @@ void nss_gmac_enable_dma_tx(struct nss_gmac_dev *gmacdev)
 {
 	uint32_t data;
 
-	data = nss_gmac_read_reg((uint32_t *)gmacdev->dma_base, dma_control);
+	data = nss_gmac_read_reg(gmacdev->dma_base, dma_control);
 	data |= dma_tx_start;
-	nss_gmac_write_reg((uint32_t *)gmacdev->dma_base, dma_control, data);
+	nss_gmac_write_reg(gmacdev->dma_base, dma_control, data);
 }
 
 /*
@@ -1839,9 +1952,9 @@ void nss_gmac_disable_dma_tx(struct nss_gmac_dev *gmacdev)
 {
 	uint32_t data;
 
-	data = nss_gmac_read_reg((uint32_t *)gmacdev->dma_base, dma_control);
+	data = nss_gmac_read_reg(gmacdev->dma_base, dma_control);
 	data &= (~dma_tx_start);
-	nss_gmac_write_reg((uint32_t *)gmacdev->dma_base, dma_control, data);
+	nss_gmac_write_reg(gmacdev->dma_base, dma_control, data);
 }
 
 /*
@@ -1853,9 +1966,9 @@ void nss_gmac_disable_dma_rx(struct nss_gmac_dev *gmacdev)
 {
 	uint32_t data;
 
-	data = nss_gmac_read_reg((uint32_t *)gmacdev->dma_base, dma_control);
+	data = nss_gmac_read_reg(gmacdev->dma_base, dma_control);
 	data &= (~dma_rx_start);
-	nss_gmac_write_reg((uint32_t *)gmacdev->dma_base, dma_control, data);
+	nss_gmac_write_reg(gmacdev->dma_base, dma_control, data);
 }
 
 /*******************MMC APIs****************************/
@@ -1870,7 +1983,7 @@ void nss_gmac_disable_dma_rx(struct nss_gmac_dev *gmacdev)
 void nss_gmac_disable_mmc_tx_interrupt(struct nss_gmac_dev *gmacdev,
 						uint32_t mask)
 {
-	nss_gmac_set_reg_bits((uint32_t *)gmacdev->mac_base,
+	nss_gmac_set_reg_bits(gmacdev->mac_base,
 			      gmac_mmc_intr_mask_tx, mask);
 }
 
@@ -1884,7 +1997,7 @@ void nss_gmac_disable_mmc_tx_interrupt(struct nss_gmac_dev *gmacdev,
 void nss_gmac_disable_mmc_rx_interrupt(struct nss_gmac_dev *gmacdev,
 						uint32_t mask)
 {
-	nss_gmac_set_reg_bits((uint32_t *)gmacdev->mac_base,
+	nss_gmac_set_reg_bits(gmacdev->mac_base,
 			      gmac_mmc_intr_mask_rx, mask);
 }
 
@@ -1899,7 +2012,7 @@ void nss_gmac_disable_mmc_rx_interrupt(struct nss_gmac_dev *gmacdev,
 void nss_gmac_disable_mmc_ipc_rx_interrupt(struct nss_gmac_dev *gmacdev,
 					   uint32_t mask)
 {
-	nss_gmac_set_reg_bits((uint32_t *)gmacdev->mac_base,
+	nss_gmac_set_reg_bits(gmacdev->mac_base,
 			      gmac_mmc_rx_ipc_intr_mask, mask);
 }
 
@@ -1916,7 +2029,7 @@ void nss_gmac_disable_mmc_ipc_rx_interrupt(struct nss_gmac_dev *gmacdev,
  */
 void nss_gmac_enable_rx_chksum_offload(struct nss_gmac_dev *gmacdev)
 {
-	nss_gmac_set_reg_bits((uint32_t *)gmacdev->mac_base,
+	nss_gmac_set_reg_bits(gmacdev->mac_base,
 			      gmac_config, gmac_rx_ipc_offload);
 }
 
@@ -1928,7 +2041,7 @@ void nss_gmac_enable_rx_chksum_offload(struct nss_gmac_dev *gmacdev)
  */
 void nss_gmac_disable_rx_chksum_offload(struct nss_gmac_dev *gmacdev)
 {
-	nss_gmac_clear_reg_bits((uint32_t *)gmacdev->mac_base,
+	nss_gmac_clear_reg_bits(gmacdev->mac_base,
 				gmac_config, gmac_rx_ipc_offload);
 }
 
@@ -1942,7 +2055,7 @@ void nss_gmac_disable_rx_chksum_offload(struct nss_gmac_dev *gmacdev)
  */
 void nss_gmac_rx_tcpip_chksum_drop_enable(struct nss_gmac_dev *gmacdev)
 {
-	nss_gmac_clear_reg_bits((uint32_t *)gmacdev->dma_base,
+	nss_gmac_clear_reg_bits(gmacdev->dma_base,
 				dma_control, dma_disable_drop_tcp_cs);
 }
 
@@ -1956,7 +2069,7 @@ void nss_gmac_rx_tcpip_chksum_drop_enable(struct nss_gmac_dev *gmacdev)
  */
 void nss_gmac_rx_tcpip_chksum_drop_disable(struct nss_gmac_dev *gmacdev)
 {
-	nss_gmac_set_reg_bits((uint32_t *)gmacdev->dma_base,
+	nss_gmac_set_reg_bits(gmacdev->dma_base,
 			      dma_control, dma_disable_drop_tcp_cs);
 }
 

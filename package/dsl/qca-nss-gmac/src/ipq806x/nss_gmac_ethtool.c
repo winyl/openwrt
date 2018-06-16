@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2015, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2013-2017, The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -44,7 +44,7 @@ struct nss_gmac_ethtool_stats {
 
 #define DRVINFO_LEN		32
 #define NSS_GMAC_STAT(m)	offsetof(struct nss_gmac_stats, m)
-#define HW_ERR_SIZE		sizeof(uint32_t)
+#define HW_ERR_SIZE		sizeof(uint64_t)
 
 /**
  * @brief Array of strings describing statistics
@@ -83,6 +83,7 @@ static const struct nss_gmac_ethtool_stats gmac_gstrings_stats[] = {
 	{"rx_missed", NSS_GMAC_STAT(rx_missed)},
 	{"fifo_overflows", NSS_GMAC_STAT(fifo_overflows)},
 	{"rx_scatter_errors", NSS_GMAC_STAT(rx_scatter_errors)},
+	{"tx_ts_create_errors", NSS_GMAC_STAT(tx_ts_create_errors)},
 	{"pmt_interrupts", NSS_GMAC_STAT(hw_errs[0])},
 	{"mmc_interrupts", NSS_GMAC_STAT(hw_errs[0]) + (1 * HW_ERR_SIZE)},
 	{"line_interface_interrupts", NSS_GMAC_STAT(hw_errs[0]) + (2 * HW_ERR_SIZE)},
@@ -96,6 +97,24 @@ static const struct nss_gmac_ethtool_stats gmac_gstrings_stats[] = {
 	{"gmac_total_ticks", NSS_GMAC_STAT(gmac_total_ticks)},
 	{"gmac_worst_case_ticks", NSS_GMAC_STAT(gmac_worst_case_ticks)},
 	{"gmac_iterations", NSS_GMAC_STAT(gmac_iterations)},
+	{"tx_pause_frames", NSS_GMAC_STAT(tx_pause_frames)},
+	{"rx_octets_g", NSS_GMAC_STAT(rx_octets_g)},
+	{"rx_ucast_frames", NSS_GMAC_STAT(rx_ucast_frames)},
+	{"rx_bcast_frames", NSS_GMAC_STAT(rx_bcast_frames)},
+	{"rx_mcast_frames", NSS_GMAC_STAT(rx_mcast_frames)},
+	{"rx_undersize", NSS_GMAC_STAT(rx_undersize)},
+	{"rx_oversize", NSS_GMAC_STAT(rx_oversize)},
+	{"rx_jabber", NSS_GMAC_STAT(rx_jabber)},
+	{"rx_octets_gb", NSS_GMAC_STAT(rx_octets_gb)},
+	{"rx_frag_frames_g", NSS_GMAC_STAT(rx_frag_frames_g)},
+	{"tx_octets_g", NSS_GMAC_STAT(tx_octets_g)},
+	{"tx_ucast_frames", NSS_GMAC_STAT(tx_ucast_frames)},
+	{"tx_bcast_frames", NSS_GMAC_STAT(tx_bcast_frames)},
+	{"tx_mcast_frames", NSS_GMAC_STAT(tx_mcast_frames)},
+	{"tx_deferred", NSS_GMAC_STAT(tx_deferred)},
+	{"tx_single_col", NSS_GMAC_STAT(tx_single_col)},
+	{"tx_multiple_col", NSS_GMAC_STAT(tx_multiple_col)},
+	{"tx_octets_gb", NSS_GMAC_STAT(tx_octets_gb)},
 };
 
 /**
@@ -103,68 +122,11 @@ static const struct nss_gmac_ethtool_stats gmac_gstrings_stats[] = {
  */
 static const char *gmac_strings_priv_flags[] = {
 	"linkpoll",
+	"tstamp",
 };
 
 #define NSS_GMAC_STATS_LEN	ARRAY_SIZE(gmac_gstrings_stats)
 #define NSS_GMAC_PRIV_FLAGS_LEN	ARRAY_SIZE(gmac_strings_priv_flags)
-
-
-/*
- * Convert NSS GMAC speed id to ethtool id.
- * @param[in] nss gmac specific speed
- * @return Returns ethtool speed
- */
-static int32_t nss_gmac_to_ethtool_speed(int32_t speed)
-{
-	int32_t ret;
-
-	switch (speed) {
-	case SPEED10:
-		ret = SPEED_10;
-		break;
-
-	case SPEED100:
-		ret = SPEED_100;
-		break;
-
-	case SPEED1000:
-		ret = SPEED_1000;
-		break;
-
-	default:
-		ret = SPEED_UNKNOWN;
-		break;
-	}
-
-	return ret;
-}
-
-/*
- * Convert NSS GMAC duplex id to ethtool id.
- * @param[in] nss gmac specific duplex value
- * @return Returns ethtool duplex value
- */
-static int32_t nss_gmac_to_ethtool_duplex(int32_t duplex)
-{
-	int32_t ret;
-
-	switch (duplex) {
-	case HALFDUPLEX:
-		ret = DUPLEX_HALF;
-		break;
-
-	case FULLDUPLEX:
-		ret = DUPLEX_FULL;
-		break;
-
-	default:
-		ret = DUPLEX_UNKNOWN;
-		break;
-	}
-
-	return ret;
-}
-
 
 /**
  * @brief Get number of strings that describe requested objects.
@@ -183,7 +145,7 @@ static int32_t nss_gmac_get_strset_count(struct net_device *netdev,
 		break;
 
 	default:
-		netdev_dbg(netdev, "%s: Invalid string set", __func__);
+		netdev_dbg(netdev, "%s: Invalid string set\n", __func__);
 		return -EOPNOTSUPP;
 	}
 }
@@ -239,7 +201,7 @@ static void nss_gmac_get_ethtool_stats(struct net_device *netdev,
 	for (i = 0; i < NSS_GMAC_STATS_LEN; i++) {
 		p = (uint8_t *)&(gmacdev->nss_stats) +
 					gmac_gstrings_stats[i].stat_offset;
-		data[i] = *(uint32_t *)p;
+		data[i] = *(uint64_t *)p;
 	}
 	spin_unlock_bh(&gmacdev->stats_lock);
 }
@@ -395,9 +357,6 @@ static int32_t nss_gmac_get_settings(struct net_device *netdev,
 	gmacdev = (struct nss_gmac_dev *)netdev_priv(netdev);
 	BUG_ON(gmacdev == NULL);
 
-	/* Populate supported capabilities */
-	ecmd->supported = NSS_GMAC_SUPPORTED_FEATURES;
-
 	/*
 	 * If the speed/duplex for this GMAC is forced and we are not
 	 * polling for link state changes, return the values as specified by
@@ -406,8 +365,8 @@ static int32_t nss_gmac_get_settings(struct net_device *netdev,
 	 */
 	if (!test_bit(__NSS_GMAC_LINKPOLL, &gmacdev->flags)) {
 		if (gmacdev->forced_speed != SPEED_UNKNOWN) {
-			ethtool_cmd_speed_set(ecmd, nss_gmac_to_ethtool_speed(gmacdev->forced_speed));
-			ecmd->duplex = nss_gmac_to_ethtool_duplex(gmacdev->forced_duplex);
+			ethtool_cmd_speed_set(ecmd, gmacdev->forced_speed);
+			ecmd->duplex = gmacdev->forced_duplex;
 			ecmd->mdio_support = 0;
 			ecmd->lp_advertising = 0;
 			return 0;
@@ -422,26 +381,37 @@ static int32_t nss_gmac_get_settings(struct net_device *netdev,
 	phydev = gmacdev->phydev;
 
 	/* update PHY status */
-	if (genphy_read_status(phydev) != 0)
-		return -EIO;
+	if (phydev->is_c45 == true) {
+		ecmd->mdio_support = ETH_MDIO_SUPPORTS_C45;
+	} else {
+		if (genphy_read_status(phydev) != 0) {
+			return -EIO;
+		}
+		ecmd->mdio_support = ETH_MDIO_SUPPORTS_C22;
+	}
 
 	/* Populate capabilities advertised by self */
 	ecmd->advertising = phydev->advertising;
 
 	ecmd->autoneg = phydev->autoneg;
-	ethtool_cmd_speed_set(ecmd, phydev->speed);
-	ecmd->duplex = phydev->duplex;
 
 	if (gmacdev->link_state == LINKDOWN) {
 		ethtool_cmd_speed_set(ecmd, SPEED_UNKNOWN);
 		ecmd->duplex = DUPLEX_UNKNOWN;
+	} else {
+		ethtool_cmd_speed_set(ecmd, phydev->speed);
+		ecmd->duplex = phydev->duplex;
 	}
 
 	ecmd->port = PORT_TP;
 	ecmd->phy_address = gmacdev->phy_base;
 	ecmd->transceiver = XCVR_EXTERNAL;
 
-	ecmd->mdio_support = ETH_MDIO_SUPPORTS_C22;
+	/* Populate supported capabilities */
+	ecmd->supported = phydev->supported;
+
+	if (phydev->is_c45 == true)
+		return 0;
 
 	/* Populate capabilities advertised by link partner */
 	phyreg = nss_gmac_mii_rd_reg(gmacdev, gmacdev->phy_base, MII_LPA);
@@ -510,9 +480,9 @@ static int32_t nss_gmac_set_settings(struct net_device *netdev,
 	phydev->duplex = ecmd->duplex;
 
 	if (ecmd->autoneg == AUTONEG_ENABLE)
-		test_and_set_bit(__NSS_GMAC_AUTONEG, &gmacdev->flags);
+		set_bit(__NSS_GMAC_AUTONEG, &gmacdev->flags);
 	else
-		test_and_clear_bit(__NSS_GMAC_AUTONEG, &gmacdev->flags);
+		clear_bit(__NSS_GMAC_AUTONEG, &gmacdev->flags);
 
 	genphy_config_aneg(phydev);
 
@@ -586,7 +556,6 @@ struct ethtool_ops nss_gmac_ethtool_ops = {
 	.get_priv_flags = nss_gmac_get_priv_flags,
 	.set_priv_flags = nss_gmac_set_priv_flags,
 };
-
 
 /**
  * @brief Register ethtool_ops

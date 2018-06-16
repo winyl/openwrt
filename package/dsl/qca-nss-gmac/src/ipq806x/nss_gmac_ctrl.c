@@ -1,6 +1,6 @@
 /*
  **************************************************************************
- * Copyright (c) 2013-2015, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2013-2016, The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -36,6 +36,7 @@
 #include <linux/platform_device.h>
 #include <linux/workqueue.h>
 #include <linux/phy.h>
+#include <linux/net_tstamp.h>
 
 #ifdef CONFIG_OF
 #include <linux/of.h>
@@ -52,12 +53,10 @@
 
 #include <nss_gmac_dev.h>
 #include <nss_gmac_network_interface.h>
-#include "ipv6_pssthrgh.h"
 
 
 #define NSS_GMAC_PHY_FIXUP_UID		0x004D0000
 #define NSS_GMAC_PHY_FIXUP_MASK		0xFFFF0000
-#define NSS_GMAC_COMMON_DEVICE_NODE	"nss-gmac-common"
 
 /* Prototypes */
 
@@ -141,35 +140,6 @@ uint32_t nss_gmac_wakeup_filter_config3[] = {
 	0x00000000	/* No significance of CRC for Filter2 and Filter3     */
 };
 
-#ifdef  CONFIG_PSSTHRGH
-int ipv6_pssthrgh_enable = 0;
-EXPORT_SYMBOL(ipv6_pssthrgh_enable);
-
-static int ipv6_pssthrgh_read( char *buffer, char **start, off_t offset, int count, int *eof, void *data)
-{
-        return sprintf(buffer, "%d", ipv6_pssthrgh_enable);
-}
-
-static  int ipv6_pssthrgh_write( struct file *file, const char *buffer, unsigned long count, void *unused_data)
-{
-                ipv6_pssthrgh_enable = (int)(buffer[0] - '0');
-
-                return count;
-}
-static void pssthrgh_proc_init(void)
-{
-        struct proc_dir_entry *ipv6_pssthrgh;
-
-       ipv6_pssthrgh = create_proc_entry("ipv6_pssthrgh_enable", 0666, NULL);
-       if (ipv6_pssthrgh){
-                ipv6_pssthrgh->read_proc = ipv6_pssthrgh_read;
-                ipv6_pssthrgh->write_proc = ipv6_pssthrgh_write;
-                ipv6_pssthrgh->nlink = 1;
-        }
-}
-#endif
-
-
 /**
  * This gives up the receive Descriptor queue in ring or chain mode.
  * This function is tightly coupled to the platform and operating system
@@ -193,32 +163,29 @@ static void pssthrgh_proc_init(void)
  */
 static void nss_gmac_giveup_rx_desc_queue(struct nss_gmac_dev *gmacdev,
 				struct device *dev,
-				uint32_t desc_mode) __attribute__((unused));
-static void nss_gmac_giveup_rx_desc_queue(struct nss_gmac_dev *gmacdev,
-				struct device *dev,
 				uint32_t desc_mode)
 {
 	int32_t i;
 	uint32_t status;
 	dma_addr_t dma_addr1;
 	uint32_t length1;
-	uint32_t data1;
+	uint32_t opaque;
 
 	for (i = 0; i < gmacdev->rx_desc_count; i++) {
 		nss_gmac_get_desc_data(gmacdev->rx_desc + i, &status,
-				       &dma_addr1, &length1, &data1);
+				       &dma_addr1, &length1, &opaque);
 
-		if ((length1 != 0) && (data1 != 0)) {
+		if ((length1 != 0) && (opaque != 0)) {
 			dma_unmap_single(dev, (dma_addr_t)dma_addr1,
 					 length1, DMA_FROM_DEVICE);
-			dev_kfree_skb_any((struct sk_buff *)data1);
+			dev_kfree_skb_any((struct sk_buff *)opaque);
 		}
 	}
 
 	dma_free_coherent(dev, (sizeof(struct dma_desc) * gmacdev->rx_desc_count)
 			 , gmacdev->rx_desc, gmacdev->rx_desc_dma);
 
-	netdev_dbg(gmacdev->netdev, "Memory allocated %08x for Rx Descriptors (ring) is given back"
+	netdev_dbg(gmacdev->netdev, "Memory allocated %08x for Rx Descriptors (ring) is given back\n"
 						, (uint32_t)gmacdev->rx_desc);
 
 	gmacdev->rx_desc = NULL;
@@ -249,38 +216,48 @@ static void nss_gmac_giveup_rx_desc_queue(struct nss_gmac_dev *gmacdev,
  */
 static void nss_gmac_giveup_tx_desc_queue(struct nss_gmac_dev *gmacdev,
 				  struct device *dev,
-				  uint32_t desc_mode) __attribute__((unused));
-static void nss_gmac_giveup_tx_desc_queue(struct nss_gmac_dev *gmacdev,
-				  struct device *dev,
 				  uint32_t desc_mode)
 {
 	int32_t i;
 	uint32_t status;
 	dma_addr_t dma_addr1;
 	uint32_t length1;
-	uint32_t data1;
+	uint32_t opaque;
 
 	for (i = 0; i < gmacdev->tx_desc_count; i++) {
 		nss_gmac_get_desc_data(gmacdev->tx_desc + i, &status,
-				       &dma_addr1, &length1, &data1);
+				       &dma_addr1, &length1, &opaque);
 
-		if ((length1 != 0) && (data1 != 0)) {
+		if ((length1 != 0) && (opaque != 0)) {
 			dma_unmap_single(dev, (dma_addr_t)dma_addr1, length1,
 					 DMA_TO_DEVICE);
-			dev_kfree_skb_any((struct sk_buff *)data1);
+			dev_kfree_skb_any((struct sk_buff *)opaque);
 		}
 	}
 
 	dma_free_coherent(dev, (sizeof(struct dma_desc) * gmacdev->tx_desc_count),
 			  gmacdev->tx_desc, gmacdev->tx_desc_dma);
 
-	netdev_dbg(gmacdev->netdev, "Memory allocated %08x for Tx Descriptors (ring) is given back"
+	netdev_dbg(gmacdev->netdev, "Memory allocated %08x for Tx Descriptors (ring) is given back\n"
 						, (uint32_t)gmacdev->tx_desc);
 
 	gmacdev->tx_desc = NULL;
 	gmacdev->tx_desc_dma = 0;
 }
 
+/**
+ * @brief Release the memory allocated for the gmac descriptor ring
+ * @param[in] pointer to nss_gmac_dev.
+ * @return void
+ */
+void nss_gmac_tx_rx_desc_release(struct nss_gmac_dev *gmacdev)
+{
+	struct net_device *netdev = gmacdev->netdev;
+	struct device *dev = &netdev->dev;
+
+	nss_gmac_giveup_rx_desc_queue(gmacdev, dev, RINGMODE);
+	nss_gmac_giveup_tx_desc_queue(gmacdev, dev, RINGMODE);
+}
 
 /**
  * @brief Initialize tx/rx descriptors
@@ -289,18 +266,9 @@ static void nss_gmac_giveup_tx_desc_queue(struct nss_gmac_dev *gmacdev,
  */
 void nss_gmac_tx_rx_desc_init(struct nss_gmac_dev *gmacdev)
 {
-	int32_t i;
-
 	/* Init Tx/Rx descriptor rings */
-	for (i = 0; i < gmacdev->tx_desc_count; i++) {
-		nss_gmac_tx_desc_init_ring(gmacdev->tx_desc + i,
-					   i == (gmacdev->tx_desc_count - 1));
-	}
-
-	for (i = 0; i < gmacdev->rx_desc_count; i++) {
-		nss_gmac_rx_desc_init_ring(gmacdev->rx_desc + i,
-					   i == (gmacdev->rx_desc_count - 1));
-	}
+	nss_gmac_tx_desc_init_ring(gmacdev->tx_desc, gmacdev->tx_desc_count);
+	nss_gmac_rx_desc_init_ring(gmacdev->rx_desc, gmacdev->rx_desc_count);
 
 	/* Init Tx/Rx counters in device private structure */
 	gmacdev->tx_next = 0;
@@ -319,7 +287,6 @@ void nss_gmac_tx_rx_desc_init(struct nss_gmac_dev *gmacdev)
 	nss_gmac_take_desc_ownership_tx(gmacdev);
 }
 
-
 /**
  * @brief Function provides the network interface statistics.
  * Function is registered to linux get_stats() function. This function is
@@ -329,7 +296,7 @@ void nss_gmac_tx_rx_desc_init(struct nss_gmac_dev *gmacdev)
  * @param[in] pointer to net_device_stats64 structure.
  * @return Returns pointer to net_device_stats64 structure.
  */
-struct rtnl_link_stats64 *nss_gmac_linux_get_stats64(struct net_device *netdev,
+struct rtnl_link_stats64 *nss_gmac_get_stats64(struct net_device *netdev,
 						struct rtnl_link_stats64 *stats)
 {
 	struct nss_gmac_dev *gmacdev = NULL;
@@ -351,7 +318,7 @@ struct rtnl_link_stats64 *nss_gmac_linux_get_stats64(struct net_device *netdev,
  * @param[in] pointer to an address structure.
  * @return Returns 0 on success Error code on failure.
  */
-static int32_t nss_gmac_linux_set_mac_address(struct net_device *netdev,
+static int32_t nss_gmac_set_mac_address(struct net_device *netdev,
 					      void *macaddr)
 {
 	struct nss_gmac_dev *gmacdev = NULL;
@@ -361,7 +328,7 @@ static int32_t nss_gmac_linux_set_mac_address(struct net_device *netdev,
 	BUG_ON(gmacdev == NULL);
 	BUG_ON(gmacdev->netdev != netdev);
 
-	netdev_dbg(netdev, "%s: AddrFamily: %d, %0x:%0x:%0x:%0x:%0x:%0x",
+	netdev_dbg(netdev, "%s: AddrFamily: %d, %0x:%0x:%0x:%0x:%0x:%0x\n",
 		      __func__, addr->sa_family, addr->sa_data[0],
 		      addr->sa_data[1], addr->sa_data[2], addr->sa_data[3],
 		      addr->sa_data[4], addr->sa_data[5]);
@@ -377,335 +344,410 @@ static int32_t nss_gmac_linux_set_mac_address(struct net_device *netdev,
 	return 0;
 }
 
-#define SWITCH_PHY  "switch_phy"
-#ifdef DNI_eth_phy_swap
-static inline int port2phy(int port) { return (port==4) ? 0 : (port+1); }
-static inline int phy2port(int phyUnit) { return (phyUnit==0) ? 4 : (phyUnit-1) ; }
-#else
-static inline int port2phy(int port) { return port; }
-static inline int phy2port(int phyUnit) { return phyUnit; }
-#endif
-
-struct switch_phy_timer {
-	struct timer_list timer;
-	int loops;
-	int port_mask;
-	struct work_struct work;
-};
-
-static struct mii_bus *g_miibus = NULL;
-#define SWITCH_INTERVAL	(HZ)
-
-static void miibus_get(void)
+/**
+ * @brief Display ethernet mac time and time of the next mac pps pulse.
+ * @param[in] dev pointer to device node
+ * @param[in] attribute pointer to the sysctl node
+ * @param[out] Output buffer address for sysctl file ops
+ * @return number of characters stored on Success
+ */
+static int nss_gmac_mtnp_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
-	struct device *miidev;
-	uint8_t busid[MII_BUS_ID_SIZE];
+	struct nss_gmac_dev *gmacdev = (struct nss_gmac_dev *)netdev_priv(to_net_dev(dev));
+	uint32_t sec = 0;
+	uint32_t nsec = 0;
+	uint32_t ret, timeout;
 
-	snprintf(busid, MII_BUS_ID_SIZE, "%s.%d", IPQ806X_MDIO_BUS_NAME, IPQ806X_MDIO_BUS_NUM);
+	/*
+	 * Read/capture the high and low timestamp registers values.
+	 * Make sure high register's value doesn't increment during read.
+	 */
+	timeout = TSTAMP_LOOP_VARIABLE;
+	do {
+		timeout--;
+		sec = nss_gmac_read_reg(gmacdev->mac_base, gmac_ts_high);
+		nsec = nss_gmac_read_reg(gmacdev->mac_base, gmac_ts_low);
+	} while (sec != nss_gmac_read_reg(gmacdev->mac_base, gmac_ts_high));
 
-	miidev = bus_find_device_by_name(&platform_bus_type, NULL, busid);
-	if (!miidev) {
-		printk("mdio bus '%s' get FAIL.", busid);
-		return;
+	if (timeout == 0) {
+		netdev_dbg(gmacdev->netdev, "%s: Mtnp show timed out\n", __func__);
+		return -1;
 	}
 
-	g_miibus = dev_get_drvdata(miidev);
-	if (!g_miibus) {
-		printk("mdio bus '%s' get FAIL.", busid);
-		return;
-	}
-}
+	ret = snprintf(buf, PAGE_SIZE, "%u %u %u %u\n",
+		sec,
+		nsec,
+		(nsec == 0) ? 1 : 0,
+		(nsec == 0) ? 0 : (BILLION - nsec));
 
-static void dni_switch_phy(int phyUnit)
-{
-	mutex_lock(&g_miibus->mdio_lock);
-	g_miibus->write(g_miibus, phyUnit, 0x04, 0x0de0);
-	g_miibus->write(g_miibus, phyUnit, 0x09, 0x0200);
-	g_miibus->write(g_miibus, phyUnit, 0x00, 0x1200);
-	mutex_unlock(&g_miibus->mdio_lock);
-}
-
-static void switch_phy_work(struct work_struct *work)
-{
-	int port;
-	struct switch_phy_timer *switch_timer =
-		container_of(work, struct switch_phy_timer, work);
-
-	for(port = 0; port < 5; port++){
-		if ( (switch_timer->port_mask & (1 << port)) != 0 )
-			dni_switch_phy(port);
-	}
-
-	if(--(switch_timer->loops)){
-		switch_timer->timer.expires += SWITCH_INTERVAL;
-		add_timer(&switch_timer->timer);
-	} else {
-		cancel_work_sync(&switch_timer->work);
-		kfree(switch_timer);
-	}
-}
-
-static void do_switch_phy_timer(unsigned long arg)
-{
-	struct switch_phy_timer *switch_timer = (struct switch_phy_timer *)arg;
-
-	schedule_work(&switch_timer->work);
-}
-
-static int switch_phy_read( char *page, char **start, off_t offset, int count, int *eof, void *data)
-{
-	return 0;
-}
-
-#define MAX_DOWN_TIME 30
-static int switch_phy_write( struct file *file, const char *buffer, unsigned long count, void *unused_data)
-{
-	struct switch_phy_timer *switch_timer;
-	int port;
-	char line[6] = {'9', '0', '1', '1', '1', '1'};
-	int loops, port_mask = 0;
-
-	if (copy_from_user(line, buffer, (count < sizeof(line)) ? count : sizeof(line)))
-		return -EFAULT;
-	switch_timer = kmalloc(sizeof(struct switch_phy_timer), GFP_KERNEL);
-	if(!switch_timer)
-		return -ENOMEM;
-
-	/* the 0th byte : the time(second) link down, should be 1-9 */
-	loops = (int)(line[0] - '0');
-	if (loops > MAX_DOWN_TIME)
-		loops = MAX_DOWN_TIME;
-	else if (loops < 1)
-		loops = 1;
-	loops = loops * HZ / SWITCH_INTERVAL;
-	/* 1st byte : trigger port 4 or not, ... , 5th byte : trigger port 0 or not. */
-	for (port = 0; port < 5; port++) {
-		if (line[5 - port] != '0')
-			port_mask = port_mask + (1 << port);
-	}
-	switch_timer->loops = loops;
-	switch_timer->port_mask = port_mask;
-	INIT_WORK(&switch_timer->work, switch_phy_work);
-
-	init_timer(&switch_timer->timer);
-
-	/* the ports 0, 1, 2, 3 are lan ports, 4 is wan port. */
-	for(port = 0; port < 5; port++){
-		if ( (switch_timer->port_mask & (1 << port)) != 0 )
-			dni_switch_phy(port);
-	}
-
-	switch_timer->timer.data = (unsigned long)switch_timer;
-	switch_timer->timer.function = do_switch_phy_timer;
-	switch_timer->timer.expires = jiffies + SWITCH_INTERVAL;
-
-	add_timer(&switch_timer->timer);
-
-	if(signal_pending(current))
-		return -ERESTARTSYS;
-
-	return count;
-}
-
-static void dni_switch_phy_init(void)
-{
-	struct proc_dir_entry *switch_phy;
-
-	switch_phy = create_proc_entry(SWITCH_PHY, 0666, NULL);
-
-	if(switch_phy) {
-		switch_phy->read_proc = switch_phy_read;
-		switch_phy->write_proc = switch_phy_write;
-		switch_phy->nlink = 1;
-	}
-}
-
-static void dni_switch_phy_cleanup(void)
-{
-	remove_proc_entry(SWITCH_PHY, NULL);
-}
-
-static int blink_wan_led_read( char *page, char **start, off_t offset, int count, int *eof, void *data)
-{
-	return 0;
-}
-
-extern void set_blink_wan_led(int);
-static int blink_wan_led_write( struct file *file, const char *buffer, unsigned long count, void *unused_data)
-{
-	char line[5] = {0};
-
-	if (copy_from_user(line, buffer, (count < sizeof(line)) ? count : sizeof(line)))
-		return -EFAULT;
-
-	set_blink_wan_led(line[0] - '0');
-
-	return count;
-}
-
-static void blink_wan_led_init(void)
-{
-	struct proc_dir_entry *blink_wan_led;
-
-	blink_wan_led = create_proc_entry("blink_wan_led", 0666, NULL);
-
-	if(blink_wan_led) {
-		blink_wan_led->read_proc = blink_wan_led_read;
-		blink_wan_led->write_proc = blink_wan_led_write;
-		blink_wan_led->nlink = 1;
-	}
-}
-
-static void blink_wan_led_cleanup(void)
-{
-	remove_proc_entry("blink_wan_led", NULL);
-}
-
-
-typedef struct mii_ioctl_priv_data {
-	uint32_t unit0;		/* LAN0 index */
-	uint32_t unit1;		/* LAN1 index */
-	uint32_t unit2;		/* LAN2 index */
-	uint32_t unit3;		/* LAN3 index */
-	uint32_t unit4;		/* WAN index  */
-	uint32_t data0;		/* LAN0 link status */
-	uint32_t data1;		/* LNA1 link status */
-	uint32_t data2;		/* LAN2 link status */
-	uint32_t data3;		/* LAN3 link status */
-	uint32_t data4;		/* WAN link status  */
-	uint32_t lan0_speed;
-	uint32_t lan1_speed;
-	uint32_t lan2_speed;
-	uint32_t lan3_speed;
-	uint32_t wan_speed;
-	uint32_t lan0_isFullDuplex;
-	uint32_t lan1_isFullDuplex;
-	uint32_t lan2_isFullDuplex;
-	uint32_t lan3_isFullDuplex;
-	uint32_t wan_isFullDuplex;
-} mii_ioctl_priv_data;
-
-mii_ioctl_priv_data g_mii_req = {0x00, 0x00, 0x00, 0x00, 0x00,
-                            0x00, 0x00, 0x00, 0x00, 0x00,
-                            0x00, 0x00, 0x00, 0x00, 0x00,
-                            0x00, 0x00, 0x00, 0x00, 0x00,};
-
-void set_mii_data(int port, int phy_up, int speed, int fdx)
-{
-#define ATHR_PHY_SPEED_10M	0
-#define ATHR_PHY_SPEED_100M	0x4000
-#define ATHR_PHY_SPEED_1000M	0x8000
-	if (phy_up) {
-		*(&((&g_mii_req)->data0) + port) = 1;
-		switch (speed) {
-		case ATHR_PHY_SPEED_10M:
-			*(&((&g_mii_req)->lan0_speed) + port) = 10;
-			break;
-		case ATHR_PHY_SPEED_100M:
-			*(&((&g_mii_req)->lan0_speed) + port) = 100;
-			break;
-		case ATHR_PHY_SPEED_1000M:
-			*(&((&g_mii_req)->lan0_speed) + port) = 1000;
-			break;
-		default:
-			*(&((&g_mii_req)->lan0_speed) + port) = 0;
-		}
-		*(&((&g_mii_req)->lan0_isFullDuplex) + port) = (fdx != 0);
-	} else {
-		*(&((&g_mii_req)->data0) + port) = 0;
-		*(&((&g_mii_req)->lan0_speed) + port) = 0;
-		*(&((&g_mii_req)->lan0_isFullDuplex) + port) = 0;
-	}
-}
-
-static void get_phy_status(struct nss_gmac_dev *gmacdev)
-{
-	int i, val;
-	for (i = 0; i < 5; ++i) {
-		val = mdiobus_read(gmacdev->miibus, i, 0x11);
-		set_mii_data(i >= 4 ? i : 3 - i, val & 0x0400, val & 0xc000, val & 0x2000);
-	}
-}
-
-static inline void split_addr(uint32_t regaddr, uint16_t *r1, uint16_t *r2, uint16_t *page)
-{
-	regaddr >>= 1;
-	*r1 = regaddr & 0x1e;
-
-	regaddr >>= 5;
-	*r2 = regaddr & 0x7;
-
-	regaddr >>= 3;
-	*page = regaddr & 0x3ff;
-}
-
-static uint32_t qca_mii_read(int reg)
-{
-	struct mii_bus *bus = g_miibus;
-	uint16_t r1, r2, page;
-	uint16_t lo, hi;
-
-	split_addr((uint32_t) reg, &r1, &r2, &page);
-
-	mutex_lock(&bus->mdio_lock);
-
-	bus->write(bus, 0x18, 0, page);
-	usleep_range(1000, 2000); /* wait for the page switch to propagate */
-	lo = bus->read(bus, 0x10 | r2, r1);
-	hi = bus->read(bus, 0x10 | r2, r1 + 1);
-
-	mutex_unlock(&bus->mdio_lock);
-
-	return (hi << 16) | lo;
-}
-
-static void qca_mii_write(int reg, uint32_t val)
-{
-	struct mii_bus *bus = g_miibus;
-	uint16_t r1, r2, r3;
-	uint16_t lo, hi;
-
-	split_addr((uint32_t) reg, &r1, &r2, &r3);
-	lo = val & 0xffff;
-	hi = (uint16_t) (val >> 16);
-
-	mutex_lock(&bus->mdio_lock);
-
-	bus->write(bus, 0x18, 0, r3);
-	usleep_range(1000, 2000); /* wait for the page switch to propagate */
-	bus->write(bus, 0x10 | r2, r1, lo);
-	bus->write(bus, 0x10 | r2, r1 + 1, hi);
-
-	mutex_unlock(&bus->mdio_lock);
-}
-
-#define LED_OPTION_BLINK	33
-#define LED_OPTION_ON		34
-#define LED_OPTION_OFF		35
-extern void (*set_lan_led)(int option);
-
-void set_lan_led_func(int option)
-{
-	if (option == LED_OPTION_BLINK) {
-		qca_mii_write(0x0050, 0xcc35cc35);
-		qca_mii_write(0x0054, 0xca35ca35);
-		qca_mii_write(0x0058, 0xc935c935);
-	}
-	else if (option == LED_OPTION_ON) {
-		qca_mii_write(0x0050, 0xcc01cc01);
-		qca_mii_write(0x0054, 0xca01ca01);
-		qca_mii_write(0x0058, 0xc901c901);
-	}
-	else if (option == LED_OPTION_OFF) {
-		qca_mii_write(0x0050, 0x0);
-		qca_mii_write(0x0054, 0x0);
-		qca_mii_write(0x0058, 0x0);
-	}
+	return ret;
 }
 
 /**
+ * @brief Display ethernet tstamp and system time
+ * @param[in] dev pointer to device node
+ * @param[in] attribute pointer to the sysctl node
+ * @param[out] Output buffer address for sysctl file ops
+ * @return number of characters stored on Success
+ */
+static int nss_gmac_tstamp_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct nss_gmac_dev *gmacdev = (struct nss_gmac_dev *)netdev_priv(to_net_dev(dev));
+	struct timeval tv;
+	uint32_t ret, timeout;
+	uint32_t ts_hi, ts_lo;
+
+	/*
+	 * Read/capture the high and low timestamp registers values.
+	 * Make sure high register's value doesn't increment during read.
+	 */
+	timeout = TSTAMP_LOOP_VARIABLE;
+	do {
+		timeout--;
+		ts_hi = nss_gmac_read_reg(gmacdev->mac_base, gmac_ts_high);
+		ts_lo = nss_gmac_read_reg(gmacdev->mac_base, gmac_ts_low);
+	} while ((ts_hi !=  nss_gmac_read_reg(gmacdev->mac_base, gmac_ts_high)) && timeout > 0);
+
+	if (timeout == 0) {
+		netdev_dbg(gmacdev->netdev, "%s: Tstamp show timed out\n", __func__);
+		return -1;
+	}
+
+	do_gettimeofday(&tv);
+
+	ret = snprintf(
+		buf, PAGE_SIZE,
+		"sec:%u nsec:%u time-of-day: %12d.%06d \n", ts_hi, ts_lo, (int)tv.tv_sec, (int)tv.tv_usec);
+
+	return ret;
+}
+
+/**
+ * @brief 'slam' a particular time into time registers.
+ * @param[in] dev pointer to device node
+ * @param[in] attribute pointer to the sysctl node
+ * @param[in] Input buffer address for sysctl file ops
+ * @param[in] number of chars to read from sysctl node
+ * @return number of characters read on Success
+ */
+static int nss_gmac_slam(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct nss_gmac_dev *gmacdev = (struct nss_gmac_dev *)netdev_priv(to_net_dev(dev));
+	uint32_t sec = 0;
+	uint32_t nsec = 0;
+	uint32_t data, timeout;
+
+	if (!count) {
+		pr_err("%s: Invalid input buffer.\n", __func__);
+		return -EINVAL;
+	}
+
+	if (sscanf(buf, "%u %u", &sec, &nsec) != 2) {
+		pr_err("%s: Invalid input value.\n", __func__);
+		return -EINVAL;
+	}
+
+	nss_gmac_write_reg(gmacdev->mac_base, gmac_ts_high_update, sec);
+	nss_gmac_write_reg(gmacdev->mac_base, gmac_ts_low_update, nsec);
+
+
+	/* Wait until the ts_init bit is cleared to reset it or timeout */
+	timeout = TSTAMP_LOOP_VARIABLE;
+	do {
+		timeout--;
+		data = nss_gmac_read_reg(gmacdev->mac_base, gmac_ts_control);
+	} while ((data & gmac_ts_init_mask) && timeout > 0);
+
+	if (timeout == 0) {
+		netdev_dbg(gmacdev->netdev, "%s: Slam timed out\n", __func__);
+		return -1;
+	}
+
+	nss_gmac_write_reg(gmacdev->mac_base, gmac_ts_control, data | gmac_ts_init_mask);
+
+	return strnlen(buf, count);
+}
+
+
+/**
+ * @brief coarsely adjust the time registers with passed offset
+ * @param[in] dev pointer to device node
+ * @param[in] attribute pointer to the sysctl node
+ * @param[in] Input buffer address for sysctl file ops
+ * @param[in] number of chars to read from sysctl node
+ * @return number of characters read on Success
+ */
+static int nss_gmac_cadj(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct nss_gmac_dev *gmacdev = (struct nss_gmac_dev *) netdev_priv(to_net_dev(dev));
+	int64_t offset = 0;
+	uint64_t newOffset;
+	uint32_t ts_hi;
+	uint32_t ts_lo;
+	uint32_t sec;
+	uint32_t nsec;
+	uint32_t data, timeout;
+
+	if (!count) {
+		pr_err("%s: Invalid input buffer.\n", __func__);
+		return -EINVAL;
+	}
+
+	if (sscanf(buf, "%lld", &offset) != 1) {
+		pr_err("%s: bad offset value.\n", __func__);
+		return -EINVAL;
+	}
+
+	/* Wait until we read ts_high value or timeout*/
+	timeout = TSTAMP_LOOP_VARIABLE;
+	do {
+		ts_hi = nss_gmac_read_reg(gmacdev->mac_base, gmac_ts_high);
+		ts_lo = nss_gmac_read_reg(gmacdev->mac_base, gmac_ts_low);
+	} while ((ts_hi !=  nss_gmac_read_reg(gmacdev->mac_base, gmac_ts_high) && timeout > 0));
+
+	if (timeout == 0) {
+		netdev_dbg(gmacdev->netdev, "%s: Coarse Adjustment timed out\n", __func__);
+		return -1;
+	}
+
+	newOffset = (((uint64_t) ts_hi * BILLION) + (uint64_t) ts_lo) + offset;
+	nsec = do_div(newOffset, BILLION);
+	sec = newOffset;
+
+	nss_gmac_write_reg(gmacdev->mac_base, gmac_ts_high_update, sec);
+	nss_gmac_write_reg(gmacdev->mac_base, gmac_ts_low_update, nsec);
+
+	/* Wait until the ts_init bit is cleared to reset it or timeout*/
+	timeout = TSTAMP_LOOP_VARIABLE;
+	do {
+		timeout--;
+		data = nss_gmac_read_reg(gmacdev->mac_base, gmac_ts_control);
+	} while ((data & gmac_ts_init_mask) && timeout > 0);
+
+	if (timeout == 0) {
+		netdev_dbg(gmacdev->netdev, "%s: Coarse Adjustment timed out\n", __func__);
+		return -1;
+	}
+
+	nss_gmac_write_reg(gmacdev->mac_base, gmac_ts_control, data | gmac_ts_init_mask);
+
+	return strnlen(buf, count);
+}
+
+/**
+ * @brief finely adjust the time registers with passed offset
+ * @param[in] dev pointer to device node
+ * @param[in] attribute pointer to the sysctl node
+ * @param[in] Input buffer address for sysctl file ops
+ * @param[in] number of chars to read from sysctl node
+ * @return number of characters read on Success
+ */
+static int nss_gmac_fadj(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct nss_gmac_dev *gmacdev = (struct nss_gmac_dev *)netdev_priv(to_net_dev(dev));
+	int64_t offset = 0;
+	uint64_t direction = 0;
+	uint32_t sec;
+	uint32_t nsec;
+	uint32_t data, timeout;
+
+	if (!count) {
+		pr_err("%s: Invalid input buffer.\n", __func__);
+		return -EINVAL;
+	}
+
+	if (sscanf(buf, "%lld", &offset) != 1) {
+		pr_err("%s: bad offset value.\n", __func__);
+		return -EINVAL;
+	}
+
+	/*
+	 * If offset is a negative value, we subtract from
+	 * the current time.
+	 */
+	if (offset < 0) {
+		direction = 1 << NSS_GMAC_NS_UPDATE_ADDSUB;
+		offset   *= -1;
+	}
+
+	nsec = do_div(offset, BILLION);
+	sec = offset;
+
+	nss_gmac_write_reg(gmacdev->mac_base, gmac_ts_high_update, sec);
+	nss_gmac_write_reg(gmacdev->mac_base, gmac_ts_low_update, nsec | direction);
+
+	/* Wait until the ts_updt bit is cleared to reset it or timeout*/
+	timeout = TSTAMP_LOOP_VARIABLE;
+	do {
+		timeout--;
+		data = nss_gmac_read_reg(gmacdev->mac_base, gmac_ts_control);
+	} while (data & gmac_ts_updt_mask);
+
+	if (timeout == 0) {
+		netdev_dbg(gmacdev->netdev, "%s: Fine Adjustment timed out\n", __func__);
+		return -1;
+	}
+
+	nss_gmac_write_reg(gmacdev->mac_base, gmac_ts_control, data | gmac_ts_updt_mask);
+
+	return strnlen(buf, count);
+}
+
+static DEVICE_ATTR(slam, 0220, NULL, nss_gmac_slam);
+static DEVICE_ATTR(cadj, 0220, NULL, nss_gmac_cadj);
+static DEVICE_ATTR(fadj, 0220, NULL, nss_gmac_fadj);
+static DEVICE_ATTR(mtnp, 0444, nss_gmac_mtnp_show, NULL);
+static DEVICE_ATTR(tstamp, 0444, nss_gmac_tstamp_show, NULL);
+
+static void nss_gmac_tstamp_sysfs_create(struct net_device *dev)
+{
+	if (device_create_file(&(dev->dev), &dev_attr_slam) ||
+		device_create_file(&(dev->dev), &dev_attr_cadj) ||
+		device_create_file(&(dev->dev), &dev_attr_fadj) ||
+		device_create_file(&(dev->dev), &dev_attr_tstamp) ||
+		device_create_file(&(dev->dev), &dev_attr_mtnp))
+		pr_err("Failed to create sysfs entries \n");
+	return;
+}
+
+static void nss_gmac_tstamp_sysfs_remove(struct net_device *dev)
+{
+	device_remove_file(&(dev->dev), &dev_attr_slam);
+	device_remove_file(&(dev->dev), &dev_attr_cadj);
+	device_remove_file(&(dev->dev), &dev_attr_fadj);
+	device_remove_file(&(dev->dev), &dev_attr_tstamp);
+	device_remove_file(&(dev->dev), &dev_attr_mtnp);
+	return;
+}
+
+
+#ifdef CONFIG_MDIO
+/**
+ * @brief Function to read a PHY device register over a MDIO bus
+ * @param[in] pointer to net_device structure.
+ * @param[in] PHY Address of phy device over MDIO bus
+ * @param[in] PHY device MMD to be read
+ * @param[in] PHY device register address
+ * @return Returns the value read from PHY device register
+ */
+static int nss_gmac_mdio_mii_ioctl_read(struct net_device *netdev, int phy_addr, int mmd, uint16_t addr)
+{
+	struct nss_gmac_dev *gmacdev = NULL;
+	uint16_t val_out = 0;
+	uint32_t reg = 0;
+
+	gmacdev = (struct nss_gmac_dev *)netdev_priv(netdev);
+
+	if (!gmacdev)
+		return -EIO;
+
+	/*
+	 * Check MMD is none to confirm if the
+	 * request is a MDIO clause-22
+	 */
+	if (MDIO_DEVAD_NONE == mmd) {
+		val_out = mdiobus_read(gmacdev->miibus, phy_addr, addr);
+		return val_out;
+	}
+
+	/*
+	 *  Prepare a MDIO clause-45 command
+	 */
+	reg = MII_ADDR_C45 | mmd << 16 | addr;
+	netdev_dbg(netdev, "%s: PHY addr 0x%x, Reg val 0x%x\n", __func__, phy_addr, reg);
+	val_out = mdiobus_read(gmacdev->miibus, phy_addr, reg);
+
+	return val_out;
+}
+
+/**
+ * @brief Function to write into a PHY device register over a MDIO bus
+ * @param[in] pointer to net_device structure.
+ * @param[in] PHY Address of phy device over MDIO bus
+ * @param[in] PHY device MMD to be read
+ * @param[in] PHY device register address
+ * @param[in] data to write into the PHY device register
+ * @return Returns 0 on success Error code on failure.
+ */
+static int nss_gmac_mdio_mii_ioctl_write(struct net_device *netdev, int phy_addr, int mmd,
+				uint16_t addr, uint16_t value)
+{
+	struct nss_gmac_dev *gmacdev = NULL;
+	int err = 0;
+	uint32_t reg = 0;
+
+	gmacdev = (struct nss_gmac_dev *)netdev_priv(netdev);
+
+	if (!gmacdev)
+		return -EIO;
+
+	/*
+	 * Check MMD is none to confirm if the
+	 * request is a MDIO clause-22
+	 */
+	if (MDIO_DEVAD_NONE == mmd) {
+		err = mdiobus_write(gmacdev->miibus, phy_addr, addr, value);
+		return err;
+	}
+
+	/*
+	 *  Prepare a MDIO clause-45 command
+	 */
+	reg = MII_ADDR_C45 | mmd << 16 | addr;
+	netdev_dbg(netdev, "%s: PHY addr 0x%x, Reg val 0x%x, Data 0x%x \n", __func__, phy_addr, reg, value);
+	err = mdiobus_write(gmacdev->miibus, phy_addr, reg, value);
+
+	return err;
+}
+#endif
+
+/**
+ * @brief Function to enable disable Timestamping feature
+ * @param[in] pointer to net_device structure.
+ * @param[in] ioctl input params from the user
+ * @return Returns 0 on success Error code on failure.
+ */
+static uint32_t nss_gmac_tstamp_ioctl(struct net_device *netdev, struct ifreq *ifr)
+{
+	struct hwtstamp_config  *cfg  = (struct hwtstamp_config *) ifr->ifr_data;
+	struct nss_gmac_dev *gmacdev = NULL;
+
+	gmacdev = (struct nss_gmac_dev *)netdev_priv(netdev);
+
+	/* Return if NSS FW is not up */
+	if (gmacdev->data_plane_ctx == netdev) {
+		netdev_dbg(netdev, "%s: NSS Firmware is not up. Cannot enable Timestamping  \n", __func__);
+		return -EINVAL;
+	}
+
+	/*
+	 * Enable Timestamping if not already enabled
+	 */
+	if (cfg->rx_filter == HWTSTAMP_FILTER_ALL) {
+		if (!test_bit(__NSS_GMAC_TSTAMP, &gmacdev->flags)) {
+			/* Increase headroom for PTP/NTP timestamps */
+			netdev->needed_headroom += 32;
+			/* Create sysfs entries for timestamp registers */
+			nss_gmac_tstamp_sysfs_create(netdev);
+			if (nss_gmac_ts_enable(gmacdev)) {
+				netdev_dbg(netdev, "%s: Reg write error. Cannot enable Timestamping \n", __func__);
+				return -EINVAL;
+			}
+		}
+	} else if ((cfg->tx_type == HWTSTAMP_TX_OFF) && (cfg->rx_filter != HWTSTAMP_FILTER_ALL)) {
+		/* Disable Timestamping if not already disabled	*/
+		if (!test_bit(__NSS_GMAC_TSTAMP, &gmacdev->flags)) {
+			netdev_dbg(netdev, "%s: Timestamp is already disabled \n", __func__);
+			return -EINVAL;
+		}
+		nss_gmac_ts_disable(gmacdev);
+	}
+	return 0;
+};
+
+/**
  * @brief IOCTL interface.
- * This function is mainly for debugging purpose.
+ * This function is mainly for debugging purpose and Timestamp Feature enabling
  * This provides hooks for Register read write, Retrieve descriptor status
  * and Retreiving Device structure information.
  * @param[in] pointer to net_device structure.
@@ -713,66 +755,43 @@ void set_lan_led_func(int option)
  * @param[in] ioctl command.
  * @return Returns 0 on success Error code on failure.
  */
-static int32_t nss_gmac_linux_do_ioctl(struct net_device *netdev,
+static int32_t nss_gmac_do_ioctl(struct net_device *netdev,
 				       struct ifreq *ifr, int32_t cmd)
 {
-	int32_t retval;
+	int ret = -EINVAL;
 	struct nss_gmac_dev *gmacdev = NULL;
-	struct mii_ioctl_data *mii_data = if_mii(ifr);
-
-	struct ifr_data_struct {
-		uint32_t unit;
-		uint32_t addr;
-		uint32_t data;
-	} *req;
+#ifdef CONFIG_MDIO
+	struct mii_ioctl_data *mii_data = NULL;
+#endif
 
 	if (netdev == NULL)
 		return -EINVAL;
 	if (ifr == NULL)
 		return -EINVAL;
 
-	req = (struct ifr_data_struct *)ifr->ifr_data;
-
 	gmacdev = (struct nss_gmac_dev *)netdev_priv(netdev);
 	BUG_ON(gmacdev == NULL);
 	BUG_ON(gmacdev->netdev != netdev);
 
-	netdev_dbg(netdev, "%s :: on device %s req->unit = %08x req->addr = %08x req->data = %08x cmd = %08x"
-		, __func__, netdev->name, req->unit, req->addr, req->data, cmd);
-
-	retval = 0;
-	switch (cmd) {
-	case SIOCGMIIPHY:
-		netdev_dbg(netdev, "SIOCGMIIPHY: ");
-		mii_data->phy_id = gmacdev->phy_base;
-		break;
-
-	case SIOCSMIIREG:
-		netdev_dbg(netdev, "SIOCSMIIREG: ");
-		nss_gmac_mii_wr_reg(gmacdev, gmacdev->phy_base,
-			      (mii_data->reg_num & 0x1F), mii_data->val_in);
-		break;
-
-	case SIOCGMIIREG:
-		netdev_dbg(netdev, "SIOCGMIIREG: ");
-		mii_data->val_out = nss_gmac_mii_rd_reg(gmacdev,
-						 gmacdev->phy_base,
-						 (mii_data->reg_num & 0x1F));
-		break;
-
-	case SIOCDEVPRIVATE:
-		get_phy_status(gmacdev);
-		memcpy(&(((mii_ioctl_priv_data *)ifr->ifr_data)->data0), &((&g_mii_req)->data0), 
-			(sizeof(mii_ioctl_priv_data) - (((uint32_t)&((&g_mii_req)->data0))-((uint32_t)&g_mii_req))));
-		break;
-
-	default:
-		retval = -EINVAL;
-		netdev_dbg(netdev, "Unsupported ioctl");
-		break;
+	if (cmd == SIOCSHWTSTAMP) {
+		struct hwtstamp_config  *cfg  = (struct hwtstamp_config *) ifr->ifr_data;
+		netdev_dbg(netdev, "Tstamp ioctl, Tx_type: %d, Rx_filter: %d, Flags: %d\n",
+				cfg->tx_type, cfg->rx_filter, cfg->flags);
+		ret = nss_gmac_tstamp_ioctl(netdev, ifr);
+		return ret;
 	}
 
-	return retval;
+#ifdef CONFIG_MDIO
+	mii_data = if_mii(ifr);
+	netdev_dbg(netdev, "PHY addr 0x%x, Reg num 0x%x, Val_in 0x%x, Val_out 0x%x\n",
+			mii_data->phy_id, mii_data->reg_num, mii_data->val_in, mii_data->val_out);
+	/*
+	 * Handle both MDIO C45/C22 ioctl requests
+	 */
+	if (gmacdev->phy_base != NSS_GMAC_NO_MDIO_PHY)
+		ret = mdio_mii_ioctl(&gmacdev->mdio_ctl, mii_data, cmd);
+#endif
+	return ret;
 }
 
 
@@ -784,14 +803,14 @@ static int32_t nss_gmac_linux_do_ioctl(struct net_device *netdev,
  * @param[in] pointer to net_device structure.
  * @return Returns void.
  */
-static void nss_gmac_linux_set_rx_mode(struct net_device *netdev)
+static void nss_gmac_set_rx_mode(struct net_device *netdev)
 {
 	struct nss_gmac_dev *gmacdev = NULL;
 
 	gmacdev = (struct nss_gmac_dev *)netdev_priv(netdev);
 	BUG_ON(gmacdev == NULL);
 
-	netdev_dbg(netdev, "%s: flags - 0x%x", __func__, netdev->flags);
+	netdev_dbg(netdev, "%s: flags - 0x%x\n", __func__, netdev->flags);
 
 	/* Check for Promiscuous and All Multicast modes */
 	if (netdev->flags & IFF_PROMISC) {
@@ -828,9 +847,9 @@ static int32_t nss_gmac_set_features(struct net_device *netdev,
 
 	if (changed & NETIF_F_RXCSUM) {
 		if (features & NETIF_F_RXCSUM)
-			test_and_set_bit(__NSS_GMAC_RXCSUM, &gmacdev->flags);
+			set_bit(__NSS_GMAC_RXCSUM, &gmacdev->flags);
 		else
-			test_and_clear_bit(__NSS_GMAC_RXCSUM, &gmacdev->flags);
+			clear_bit(__NSS_GMAC_RXCSUM, &gmacdev->flags);
 		nss_gmac_ipc_offload_init(gmacdev);
 	}
 
@@ -852,16 +871,16 @@ static int32_t nss_gmac_set_features(struct net_device *netdev,
  * Netdevice operations
  */
 static const struct net_device_ops nss_gmac_netdev_ops = {
-	.ndo_open = &nss_gmac_linux_open,
-	.ndo_stop = &nss_gmac_linux_close,
-	.ndo_start_xmit = &nss_gmac_linux_xmit_frames,
-	.ndo_get_stats64 = &nss_gmac_linux_get_stats64,
-	.ndo_set_mac_address = &nss_gmac_linux_set_mac_address,
+	.ndo_open = &nss_gmac_open,
+	.ndo_stop = &nss_gmac_close,
+	.ndo_start_xmit = &nss_gmac_xmit_frames,
+	.ndo_get_stats64 = &nss_gmac_get_stats64,
+	.ndo_set_mac_address = &nss_gmac_set_mac_address,
 	.ndo_validate_addr = &eth_validate_addr,
-	.ndo_change_mtu = &nss_gmac_linux_change_mtu,
-	.ndo_do_ioctl = &nss_gmac_linux_do_ioctl,
-	.ndo_tx_timeout = &nss_gmac_linux_tx_timeout,
-	.ndo_set_rx_mode = &nss_gmac_linux_set_rx_mode,
+	.ndo_change_mtu = &nss_gmac_change_mtu,
+	.ndo_do_ioctl = &nss_gmac_do_ioctl,
+	.ndo_tx_timeout = &nss_gmac_tx_timeout,
+	.ndo_set_rx_mode = &nss_gmac_set_rx_mode,
 	.ndo_set_features = &nss_gmac_set_features,
 };
 
@@ -917,16 +936,28 @@ static int32_t nss_gmac_of_get_pdata(struct device_node *np,
 	gmacdev = netdev_priv(netdev);
 
 	if (of_property_read_u32(np, "qcom,id", &gmacdev->macid)
-		|| of_property_read_u32(np, "qcom,emulation", &gmaccfg->emulation)
-		|| of_property_read_u32(np, "qcom,phy_mdio_addr", &gmaccfg->phy_mdio_addr)
-		|| of_property_read_u32(np, "qcom,rgmii_delay", &gmaccfg->rgmii_delay)
-		|| of_property_read_u32(np, "qcom,poll_required", &gmaccfg->poll_required)
-		|| of_property_read_u32(np, "qcom,forced_speed", &gmaccfg->forced_speed)
-		|| of_property_read_u32(np, "qcom,forced_duplex", &gmaccfg->forced_duplex)
-		|| of_property_read_u32(np, "qcom,socver", &gmaccfg->socver)) {
+		|| of_property_read_u32(np, "qcom,phy-mdio-addr",
+			&gmaccfg->phy_mdio_addr)
+		|| of_property_read_u32(np, "qcom,rgmii-delay",
+			&gmaccfg->rgmii_delay)
+		|| of_property_read_u32(np, "qcom,poll-required",
+			&gmaccfg->poll_required)
+		|| of_property_read_u32(np, "qcom,forced-speed",
+			&gmaccfg->forced_speed)
+		|| of_property_read_u32(np, "qcom,forced-duplex",
+			&gmaccfg->forced_duplex)
+		|| of_property_read_u32(np, "qcom,pcs-chanid",
+			&gmacdev->sgmii_pcs_chanid)) {
 		pr_err("%s: error reading critical device node properties\n", np->name);
 		return -EFAULT;
 	}
+
+	if (of_property_read_u32(np, "qcom,socver", &gmaccfg->socver))
+		gmaccfg->socver = 0;
+	if (of_property_read_u32(np, "qcom,mmds-mask", &gmaccfg->mmds_mask))
+		gmaccfg->mmds_mask = 0;
+
+	of_property_read_u32(np, "qcom,aux-clk-freq", &gmacdev->aux_clk_freq);
 
 	gmaccfg->phy_mii_type = of_get_phy_mode(np);
 	netdev->irq = irq_of_parse_and_map(np, 0);
@@ -966,7 +997,7 @@ static int32_t nss_gmac_do_common_init(struct platform_device *pdev)
 	 */
 	common_device_node = of_find_node_by_name(NULL, NSS_GMAC_COMMON_DEVICE_NODE);
 	if (!common_device_node) {
-		pr_info("Cannot find device tree node "NSS_GMAC_COMMON_DEVICE_NODE);
+		pr_info("Cannot find device tree node "NSS_GMAC_COMMON_DEVICE_NODE" \n");
 		ret = -EFAULT;
 		goto nss_gmac_cmn_init_fail;
 	}
@@ -982,6 +1013,11 @@ static int32_t nss_gmac_do_common_init(struct platform_device *pdev)
 		ret = -EFAULT;
 		goto nss_gmac_cmn_init_fail;
 	}
+
+	/*
+	 * Enable clock control for MSM Boards with DT support
+	 */
+	ctx.msm_clk_ctl_enabled = !!of_machine_is_compatible("qcom,ipq8064");
 #else
 	res_nss_base.start = NSS_REG_BASE;
 	res_nss_base.end = NSS_REG_BASE + NSS_REG_LEN - 1;
@@ -994,35 +1030,40 @@ static int32_t nss_gmac_do_common_init(struct platform_device *pdev)
 	res_clk_ctl_base.start = IPQ806X_CLK_CTL_PHYS;
 	res_clk_ctl_base.end = IPQ806X_CLK_CTL_PHYS + IPQ806X_CLK_CTL_SIZE - 1;
 	res_clk_ctl_base.flags = IORESOURCE_MEM;
+
+	/*
+	 * Enable clock control for MSM Boards without DT support
+	 */
+	ctx.msm_clk_ctl_enabled = true;
 #endif
 
 	ctx.nss_base = (uint8_t *)ioremap_nocache(res_nss_base.start,
 						  resource_size(&res_nss_base));
 	if (!ctx.nss_base) {
-		pr_info("Error mapping NSS GMAC registers");
+		pr_info("Error mapping NSS GMAC registers\n");
 		ret = -EIO;
 		goto nss_gmac_cmn_init_fail;
 	}
-	pr_debug("%s: NSS base ioremap OK.", __func__);
+	pr_debug("%s: NSS base ioremap OK.\n", __func__);
 
 	ctx.qsgmii_base = (uint32_t *)ioremap_nocache(res_qsgmii_base.start,
 					      resource_size(&res_qsgmii_base));
 	if (!ctx.qsgmii_base) {
-		pr_info("Error mapping QSGMII registers");
+		pr_info("Error mapping QSGMII registers\n");
 		ret = -EIO;
 		goto nss_gmac_qsgmii_map_err;
 	}
-	pr_debug("%s: QSGMII base ioremap OK, vaddr = 0x%p",
+	pr_debug("%s: QSGMII base ioremap OK, vaddr = 0x%p\n",
 						__func__, ctx.qsgmii_base);
 
 	ctx.clk_ctl_base = (uint32_t *)ioremap_nocache(res_clk_ctl_base.start,
 				       resource_size(&res_clk_ctl_base));
 	if (!ctx.clk_ctl_base) {
-		pr_info("Error mapping Clk control registers");
+		pr_info("Error mapping Clk control registers\n");
 		ret = -EIO;
 		goto nss_gmac_clkctl_map_err;
 	}
-	pr_debug("%s: Clk control base ioremap OK, vaddr = 0x%p", __func__,
+	pr_debug("%s: Clk control base ioremap OK, vaddr = 0x%p\n", __func__,
 							ctx.clk_ctl_base);
 
 	if (nss_gmac_common_init(&ctx) == 0) {
@@ -1052,7 +1093,6 @@ nss_gmac_cmn_init_ok:
 	return ret;
 }
 
-
 /**
  * @brief Function to initialize the Linux network interface.
  * Linux dependent Network interface is setup here. This provides
@@ -1068,6 +1108,16 @@ static int32_t nss_gmac_probe(struct platform_device *pdev)
 	int32_t ret = 0;
 	phy_interface_t phyif = 0;
 	uint8_t phy_id[MII_BUS_ID_SIZE + 3];
+#ifdef CONFIG_OF
+	struct msm_nss_gmac_platform_data gmaccfg_devicetree;
+	struct device_node *np = NULL;
+	const __be32 *prop = NULL;
+	struct device_node *mdio_node = NULL;
+	struct platform_device *mdio_plat = NULL;
+#else
+	struct device *miidev;
+	uint8_t busid[MII_BUS_ID_SIZE];
+#endif
 
 	if (ctx.common_init_done == false) {
 		ret = nss_gmac_do_common_init(pdev);
@@ -1082,7 +1132,7 @@ static int32_t nss_gmac_probe(struct platform_device *pdev)
 	 */
 	netdev = alloc_etherdev(sizeof(struct nss_gmac_dev));
 	if (!netdev) {
-		pr_info("%s: alloc_etherdev() failed", __func__);
+		pr_info("%s: alloc_etherdev() failed\n", __func__);
 		return -ENOMEM;
 	}
 
@@ -1098,9 +1148,6 @@ static int32_t nss_gmac_probe(struct platform_device *pdev)
 	gmacdev->loop_back_mode = NOLOOPBACK;
 
 #ifdef CONFIG_OF
-	struct msm_nss_gmac_platform_data gmaccfg_devicetree;
-	struct device_node *np = NULL;
-
 	np = of_node_get(pdev->dev.of_node);
 	ret = nss_gmac_of_get_pdata(np, netdev, &gmaccfg_devicetree);
 	if (ret != 0) {
@@ -1115,8 +1162,8 @@ static int32_t nss_gmac_probe(struct platform_device *pdev)
 	netdev->base_addr = pdev->resource[0].start;
 	netdev->irq = pdev->resource[1].start;
 	gmacdev->macid = pdev->id;
+	gmacdev->sgmii_pcs_chanid = gmacdev->macid;
 #endif
-	gmacdev->emulation = gmaccfg->emulation;
 	gmacdev->phy_mii_type = gmaccfg->phy_mii_type;
 	gmacdev->phy_base = gmaccfg->phy_mdio_addr;
 	gmacdev->rgmii_delay = gmaccfg->rgmii_delay;
@@ -1125,40 +1172,17 @@ static int32_t nss_gmac_probe(struct platform_device *pdev)
 		ctx.socver = gmaccfg->socver;
 
 	if (gmaccfg->poll_required) {
-		test_and_set_bit(__NSS_GMAC_LINKPOLL, &gmacdev->flags);
+		set_bit(__NSS_GMAC_LINKPOLL, &gmacdev->flags);
 		gmacdev->drv_flags |= NSS_GMAC_PRIV_FLAG(LINKPOLL);
 	}
 
-	switch (gmaccfg->forced_speed) {
-	case SPEED_10:
-		gmacdev->forced_speed = SPEED10;
-		break;
-
-	case SPEED_100:
-		gmacdev->forced_speed = SPEED100;
-		break;
-
-	case SPEED_1000:
-		gmacdev->forced_speed = SPEED1000;
-		break;
-
-	default:
+	if ((gmaccfg->forced_speed != SPEED_10) && (gmaccfg->forced_speed != SPEED_100)
+			&& (gmaccfg->forced_speed != SPEED_1000)) {
 		gmacdev->forced_speed = SPEED_UNKNOWN;
-		break;
-	}
-
-	switch (gmaccfg->forced_duplex) {
-	case DUPLEX_HALF:
-		gmacdev->forced_duplex = HALFDUPLEX;
-		break;
-
-	case DUPLEX_FULL:
-		gmacdev->forced_duplex = FULLDUPLEX;
-		break;
-
-	default:
 		gmacdev->forced_duplex = DUPLEX_UNKNOWN;
-		break;
+	} else {
+		gmacdev->forced_speed = gmaccfg->forced_speed;
+		gmacdev->forced_duplex = gmaccfg->forced_duplex;
 	}
 
 	/* save global context within each GMAC context */
@@ -1172,79 +1196,73 @@ static int32_t nss_gmac_probe(struct platform_device *pdev)
 	if (nss_gmac_attach(gmacdev, netdev->base_addr,
 			    pdev->resource[0].end - pdev->resource[0].start +
 			    1) < 0) {
-		netdev_dbg(netdev, "attach failed for %s", netdev->name);
+		netdev_dbg(netdev, "attach failed for %s\n", netdev->name);
 		ret = -EIO;
 		goto nss_gmac_attach_fail;
 	}
 
-	if (gmacdev->emulation == 0) {
+#ifndef RUMI_EMULATION_SUPPORT
 #ifdef CONFIG_OF
-		const __be32 *prop = NULL;
-		struct device_node *mdio_node = NULL;
-		struct platform_device *mdio_plat = NULL;
+	prop = of_get_property(np, "mdiobus", NULL);
+	if (!prop) {
+		netdev_dbg(netdev, "cannot get 'mdiobus' property\n");
+		ret = -EIO;
+		goto mdiobus_init_fail;
+	}
 
-		prop = of_get_property(np, "mdiobus", NULL);
-		if (!prop) {
-			netdev_dbg(netdev, "cannot get 'mdiobus' property");
-			ret = -EIO;
-			goto mdiobus_init_fail;
-		}
+	mdio_node = of_find_node_by_phandle(be32_to_cpup(prop));
+	if (!mdio_node) {
+		netdev_dbg(netdev, "cannot find mdio node by phandle\n");
+		ret = -EIO;
+		goto mdiobus_init_fail;
+	}
 
-		mdio_node = of_find_node_by_phandle(be32_to_cpup(prop));
-		if (!mdio_node) {
-			netdev_dbg(netdev, "cannot find mdio node by phandle");
-			ret = -EIO;
-			goto mdiobus_init_fail;
-		}
+	mdio_plat = of_find_device_by_node(mdio_node);
+	if (!mdio_plat) {
+		netdev_dbg(netdev, "cannot find platform device from mdio node\n");
+		of_node_put(mdio_node);
+		ret = -EIO;
+		goto mdiobus_init_fail;
+	}
 
-		mdio_plat = of_find_device_by_node(mdio_node);
-		if (!mdio_plat) {
-			netdev_dbg(netdev, "cannot find platform device from mdio node");
-			of_node_put(mdio_node);
-			ret = -EIO;
-			goto mdiobus_init_fail;
-		}
-
-		gmacdev->miibus = dev_get_drvdata(&mdio_plat->dev);
-		if (!gmacdev->miibus) {
-			netdev_dbg(netdev, "cannot get mii bus reference from device data");
-			of_node_put(mdio_node);
-			ret = -EIO;
-			goto mdiobus_init_fail;
-		}
+	gmacdev->miibus = dev_get_drvdata(&mdio_plat->dev);
+	if (!gmacdev->miibus) {
+		netdev_dbg(netdev, "cannot get mii bus reference from device data\n");
+		of_node_put(mdio_node);
+		ret = -EIO;
+		goto mdiobus_init_fail;
+	}
 #else
-		struct device *miidev;
-		uint8_t busid[MII_BUS_ID_SIZE];
-
-		snprintf(busid, MII_BUS_ID_SIZE, "%s.%d", IPQ806X_MDIO_BUS_NAME,
+	snprintf(busid, MII_BUS_ID_SIZE, "%s.%d", IPQ806X_MDIO_BUS_NAME,
 							IPQ806X_MDIO_BUS_NUM);
 
-		miidev = bus_find_device_by_name(&platform_bus_type, NULL, busid);
-		if (!miidev) {
-			netdev_dbg(netdev, "mdio bus '%s' get FAIL.", busid);
-			ret = -EIO;
-			goto mdiobus_init_fail;
-		}
+	miidev = bus_find_device_by_name(&platform_bus_type, NULL, busid);
+	if (!miidev) {
+		netdev_dbg(netdev, "mdio bus '%s' get FAIL.\n", busid);
+		ret = -EIO;
+		goto mdiobus_init_fail;
+	}
 
-		gmacdev->miibus = dev_get_drvdata(miidev);
-		if (!gmacdev->miibus) {
-			netdev_dbg(netdev, "mdio bus '%s' get FAIL.", busid);
-			ret = -EIO;
-			goto mdiobus_init_fail;
-		}
+	gmacdev->miibus = dev_get_drvdata(miidev);
+	if (!gmacdev->miibus) {
+		netdev_dbg(netdev, "mdio bus '%s' get FAIL.\n", busid);
+		ret = -EIO;
+		goto mdiobus_init_fail;
+	}
 #endif
 
-		netdev_dbg(netdev, "mdio bus '%s' OK.", gmacdev->miibus->id);
-
-	} else if (gmacdev->emulation && (gmacdev->phy_mii_type == PHY_INTERFACE_MODE_RGMII)) {
+	netdev_dbg(netdev, "mdio bus '%s' OK.\n", gmacdev->miibus->id);
+#else
+	if (gmacdev->phy_mii_type == PHY_INTERFACE_MODE_RGMII) {
 		if (nss_gmac_init_mdiobus(gmacdev) != 0) {
-			netdev_dbg(netdev, "mdio bus register FAIL for emulation.");
+			netdev_dbg(netdev, "mdio bus register FAIL for emulation.\n");
 			ret = -EIO;
 			goto mdiobus_init_fail;
 		}
-		netdev_dbg(netdev, "mdio bus '%s' register OK for emulation.",
-							gmacdev->miibus->id);
 	}
+	netdev_dbg(netdev, "mdio bus '%s' register OK for emulation.\n",
+							gmacdev->miibus->id);
+#endif
 
 	/*
 	 * This just fill in some default MAC address
@@ -1253,7 +1271,7 @@ static int32_t nss_gmac_probe(struct platform_device *pdev)
 		memcpy(netdev->dev_addr, &gmaccfg->mac_addr, ETH_ALEN);
 	} else {
 		random_ether_addr(netdev->dev_addr);
-		pr_info("GMAC%d(%p) Invalid MAC@ - using %02x:%02x:%02x:%02x:%02x:%02x",
+		pr_info("GMAC%d(%p) Invalid MAC@ - using %02x:%02x:%02x:%02x:%02x:%02x\n",
 			gmacdev->macid, gmacdev,
 			*netdev->dev_addr, *netdev->dev_addr+1,
 			*netdev->dev_addr+2, *netdev->dev_addr+3,
@@ -1280,7 +1298,7 @@ static int32_t nss_gmac_probe(struct platform_device *pdev)
 				NSS_GMAC_PHY_FIXUP_MASK,
 				&nss_gmac_phy_fixup);
 		if (ret	!= 0) {
-			netdev_dbg(netdev, "PHY fixup register Error.");
+			netdev_dbg(netdev, "PHY fixup register Error.\n");
 			goto nss_gmac_phy_attach_fail;
 		}
 	}
@@ -1296,7 +1314,7 @@ static int32_t nss_gmac_probe(struct platform_device *pdev)
 #endif
 
 		if (IS_ERR(gmacdev->phydev)) {
-			netdev_dbg(netdev, "PHY %s attach FAIL", phy_id);
+			netdev_dbg(netdev, "PHY %s attach FAIL\n", phy_id);
 			ret = -EIO;
 			goto nss_gmac_phy_attach_fail;
 		}
@@ -1304,25 +1322,26 @@ static int32_t nss_gmac_probe(struct platform_device *pdev)
 		nss_gmac_update_features(&(gmacdev->phydev->supported),
 					&(gmacdev->phydev->advertising));
 		gmacdev->phydev->irq = PHY_POLL;
-		netdev_dbg(netdev, "PHY %s attach OK", phy_id);
+		netdev_dbg(netdev, "PHY %s attach OK\n", phy_id);
 
 		/* reset corresponding Phy */
 		nss_gmac_reset_phy(gmacdev, gmacdev->phy_base);
 
 		if (gmacdev->phy_mii_type == PHY_INTERFACE_MODE_RGMII) {
 			/* RGMII Tx delay */
-			netdev_dbg(netdev, "%s: Program RGMII Tx delay..... ", __func__);
+			netdev_dbg(netdev, "%s: Program RGMII Tx delay..... \n", __func__);
 			mdiobus_write(gmacdev->miibus, gmacdev->phy_base, 0x1D, 0x05);
 			mdiobus_write(gmacdev->miibus, gmacdev->phy_base, 0x1E, 0x100);
 			mdiobus_write(gmacdev->miibus, gmacdev->phy_base, 0x1D, 0x0B);
-			mdiobus_write(gmacdev->miibus, gmacdev->phy_base, 0x1E, 0xBC20);
+			mdiobus_write(gmacdev->miibus, gmacdev->phy_base, 0x1E,
+				(0xBC00 | AR8xxx_PHY_RGMII_TX_DELAY_VAL(gmacdev->rgmii_delay)));
 		}
 
 		/* XXX: Test code to verify if MDIO access is OK. Remove after
 		 * bringup. */
-		netdev_dbg(netdev, "%s MII_PHYSID1 - 0x%04x", netdev->name,
+		netdev_dbg(netdev, "%s MII_PHYSID1 - 0x%04x\n", netdev->name,
 		      nss_gmac_mii_rd_reg(gmacdev, gmacdev->phy_base, MII_PHYSID1));
-		netdev_dbg(netdev, "%s MII_PHYSID2 - 0x%04x", netdev->name,
+		netdev_dbg(netdev, "%s MII_PHYSID2 - 0x%04x\n", netdev->name,
 		      nss_gmac_mii_rd_reg(gmacdev, gmacdev->phy_base, MII_PHYSID2));
 	} else if (gmacdev->phy_base != NSS_GMAC_NO_MDIO_PHY) {
 		/*
@@ -1336,7 +1355,7 @@ static int32_t nss_gmac_probe(struct platform_device *pdev)
 						(const char *)phy_id, phyif);
 #endif
 		if (IS_ERR(gmacdev->phydev)) {
-			netdev_dbg(netdev, "PHY %s attach FAIL", phy_id);
+			netdev_dbg(netdev, "PHY %s attach FAIL\n", phy_id);
 			ret = -EIO;
 			goto nss_gmac_phy_attach_fail;
 		}
@@ -1345,12 +1364,12 @@ static int32_t nss_gmac_probe(struct platform_device *pdev)
 		gmacdev->phydev = ERR_PTR(-ENODEV);
 	}
 
-	test_and_set_bit(__NSS_GMAC_RXCSUM, &gmacdev->flags);
+	set_bit(__NSS_GMAC_RXCSUM, &gmacdev->flags);
 	nss_gmac_ipc_offload_init(gmacdev);
 
 	/* Register the network interface */
 	if (register_netdev(netdev)) {
-		netdev_dbg(netdev, "Error registering netdevice %s",
+		netdev_dbg(netdev, "Error registering netdevice %s\n",
 			      netdev->name);
 		ret = -EFAULT;
 		goto nss_gmac_reg_fail;
@@ -1363,10 +1382,26 @@ static int32_t nss_gmac_probe(struct platform_device *pdev)
 	netdev_change_features(netdev);
 	rtnl_unlock();
 
-	netdev_dbg(netdev, "Initialized NSS GMAC%d interface %s: (base = 0x%lx, irq = %d, PhyId = %d, PollLink = %d)"
+	netdev_dbg(netdev, "Initialized NSS GMAC%d interface %s: (base = 0x%lx, irq = %d, PhyId = %d, PollLink = %d)\n"
 			, gmacdev->macid, netdev->name, netdev->base_addr
 			, netdev->irq, gmacdev->phy_base
 			, test_bit(__NSS_GMAC_LINKPOLL, &gmacdev->flags));
+
+#ifdef CONFIG_MDIO
+	/* Set ethernet Controler MDIO properties */
+	if (gmacdev->phy_base != NSS_GMAC_NO_MDIO_PHY) {
+		gmacdev->mdio_ctl.prtad = gmacdev->phy_base;
+		gmacdev->mdio_ctl.mmds = gmaccfg->mmds_mask;
+		if (gmaccfg->mmds_mask)
+			gmacdev->mdio_ctl.mode_support = MDIO_SUPPORTS_C45;
+		else
+			gmacdev->mdio_ctl.mode_support = MDIO_SUPPORTS_C22;
+
+		gmacdev->mdio_ctl.dev = gmacdev->netdev;
+		gmacdev->mdio_ctl.mdio_read = nss_gmac_mdio_mii_ioctl_read;
+		gmacdev->mdio_ctl.mdio_write = nss_gmac_mdio_mii_ioctl_write;
+	}
+#endif
 
 #ifdef CONFIG_OF
 	if (pdev->dev.of_node) {
@@ -1385,8 +1420,9 @@ nss_gmac_reg_fail:
 	}
 
 nss_gmac_phy_attach_fail:
-	if (gmacdev->emulation)
-		nss_gmac_deinit_mdiobus(gmacdev);
+#ifdef RUMI_EMULATION_SUPPORT
+	nss_gmac_deinit_mdiobus(gmacdev);
+#endif
 
 mdiobus_init_fail:
 	nss_gmac_detach(gmacdev);
@@ -1411,30 +1447,10 @@ nss_gmac_attach_fail:
  */
 static int nss_gmac_remove(struct platform_device *pdev)
 {
-	struct net_device *netdev = NULL;
-	struct nss_gmac_dev *gmacdev = NULL;
-
-	gmacdev = ctx.nss_gmac[pdev->id];
-	if (!gmacdev) {
-		pr_info("Invalid GMAC");
-		return -EINVAL;
-	}
-
-	netdev = gmacdev->netdev;
-
-	if (!IS_ERR(gmacdev->phydev)) {
-		phy_disconnect(gmacdev->phydev);
-		gmacdev->phydev = NULL;
-	}
-
-	if (gmacdev->emulation)
-		nss_gmac_deinit_mdiobus(gmacdev);
-
-	nss_gmac_detach(gmacdev);
-	unregister_netdev(gmacdev->netdev);
-	free_netdev(gmacdev->netdev);
-	ctx.nss_gmac[pdev->id] = NULL;
-
+	/*
+	 * All remove has been done in nss_gmac_exit_network_interfaces
+	 * Just return success here
+	 */
 	return 0;
 }
 
@@ -1467,6 +1483,7 @@ static struct platform_driver nss_gmac_drv = {
 int32_t __init nss_gmac_register_driver(void)
 {
 	ctx.common_init_done = false;
+	ctx.msm_clk_ctl_enabled = false;
 
 	ctx.gmac_workqueue =
 			create_singlethread_workqueue(NSS_GMAC_WORKQUEUE_NAME);
@@ -1503,6 +1520,14 @@ void nss_gmac_exit_network_interfaces(void)
 	for (i = 0; i < NSS_MAX_GMACS; i++) {
 		gmacdev = ctx.nss_gmac[i];
 		if (gmacdev) {
+			if (!IS_ERR(gmacdev->phydev)) {
+				phy_disconnect(gmacdev->phydev);
+				gmacdev->phydev = NULL;
+			}
+#ifdef RUMI_EMULATION_SUPPORT
+			nss_gmac_deinit_mdiobus(gmacdev);
+#endif
+			nss_gmac_tstamp_sysfs_remove(gmacdev->netdev);
 			unregister_netdev(gmacdev->netdev);
 			free_netdev(gmacdev->netdev);
 			nss_gmac_detach(gmacdev);
@@ -1528,218 +1553,31 @@ void __exit nss_gmac_deregister_driver(void)
 	nss_gmac_common_deinit(&ctx);
 }
 
-#ifdef CONFIG_ETH_TM_ACCURATE_CONTROL
-extern void tm_netlink_init(struct module *module);
-extern void tm_netlink_deinit(void);
-#endif
-
-static int lan_led_ctrl_read( char *page, char **start, off_t offset, int count, int *eof, void *data)
-{
-	return 0;
-}
-
-static int lan_led_ctrl_write( struct file *file, const char *buffer, unsigned long count, void *unused_data)
-{
-	char line[5]; 
-	int option;
-
-	if (copy_from_user(line, buffer, (count < sizeof(line)) ? count : sizeof(line)))
-		return -EFAULT;
-	option = line[0] - '0';
-	printk("LAN LED state %d\n", option);
-	if (option == 0) {
-		/* led off */
-		qca_mii_write(0x0050, 0x0);
-		qca_mii_write(0x0054, 0x0);
-		qca_mii_write(0x0058, 0x0);
-		qca_mii_write(0x005c, 0x0);
-	} else if (option == 1) {
-		/* white: 1000M led on */
-		qca_mii_write(0x0050, 0x8000);
-		qca_mii_write(0x0054, 0x0);
-		qca_mii_write(0x0058, 0x0);
-		qca_mii_write(0x005c, 0x208200);
-	} else if (option == 2) {
-		/* amber: 100M len on */
-		qca_mii_write(0x0050, 0x0);
-		qca_mii_write(0x0054, 0x8000);
-		qca_mii_write(0x0058, 0x0);
-		qca_mii_write(0x005c, 0x820800);
-	} else if (option == 3) {
-		/* normal state */
-		qca_mii_write(0x0050, 0xcc35cc35);
-		qca_mii_write(0x0054, 0xca35ca35);
-		qca_mii_write(0x0058, 0xc935c935);
-		qca_mii_write(0x005c, 0x3ffff00);
-	}
-
-	return count;
-}
-
-#define LAN_LED_CTRL  "lan_led_ctrl"
-static void lan_led_ctrl_init(void)
-{
-	struct proc_dir_entry *lan_led_ctrl;
-
-	lan_led_ctrl = create_proc_entry(LAN_LED_CTRL, 0666, NULL);
-
-	if(lan_led_ctrl) {
-		lan_led_ctrl->read_proc = lan_led_ctrl_read;
-		lan_led_ctrl->write_proc = lan_led_ctrl_write;
-		lan_led_ctrl->nlink = 1;
-	}
-}
-
-static void lan_led_ctrl_cleanup(void)
-{
-	remove_proc_entry(LAN_LED_CTRL, NULL);
-}
-
-static int mirror_wan_read( char *page, char **start, off_t offset, int count, int *eof, void *data)
-{
-	return 0;
-}
-
-static int mirror_wan_write( struct file *file, const char *buffer, unsigned long count, void *unused_data)
-{
-	char line[5]; 
-	int state;
-	int old, new;
-
-	if (copy_from_user(line, buffer, (count < sizeof(line)) ? count : sizeof(line)))
-		return -EFAULT;
-	state = line[0] - '0';
-	printk("Mirror WAN state %d\n", state);
-	if (state != 0) {
-		/* mirror port 0 (WAN port) to port 4 (port near WAN port) */
-		old = qca_mii_read(0x0620);
-		qca_mii_write(0x0620, (old & (~0xf0)) | 0x40);
-		new = qca_mii_read(0x0620);
-		printk("0x0620: %08x => %08x\n", old, new);
-
-		old = qca_mii_read(0x0660);
-		qca_mii_write(0x0660, old | 0x2000000);
-		new = qca_mii_read(0x0660);
-		printk("0x0660: %08x => %08x\n", old, new);
-
-		old = qca_mii_read(0x0974);
-		qca_mii_write(0x0974, old | 0x10000);
-		new = qca_mii_read(0x0974);
-		printk("0x0974: %08x => %08x\n", old, new);
-
-		/* don't allow CPU port (port 6) and other LAN port (port 1, 2, 3) to send packet to port 4 */
-		old = qca_mii_read(0x066c);
-		qca_mii_write(0x066c, old & (~0x10));
-		new = qca_mii_read(0x066c);
-		printk("0x066c: %08x => %08x\n", old, new);
-
-		old = qca_mii_read(0x0678);
-		qca_mii_write(0x0678, old & (~0x10));
-		new = qca_mii_read(0x0678);
-		printk("0x0678: %08x => %08x\n", old, new);
-
-		old = qca_mii_read(0x0684);
-		qca_mii_write(0x0684, old & (~0x10));
-		new = qca_mii_read(0x0684);
-		printk("0x0684: %08x => %08x\n", old, new);
-
-		old = qca_mii_read(0x06a8);
-		qca_mii_write(0x06a8, old & (~0x10));
-		new = qca_mii_read(0x06a8);
-		printk("0x06a8: %08x => %08x\n", old, new);
-	} else {
-		/* disable mirror */
-		old = qca_mii_read(0x0620);
-		qca_mii_write(0x0620, old | 0xf0);
-		new = qca_mii_read(0x0620);
-		printk("0x0620: %08x => %08x\n", old, new);
-
-		old = qca_mii_read(0x0660);
-		qca_mii_write(0x0660, old & (~0x2000000));
-		new = qca_mii_read(0x0660);
-		printk("0x0660: %08x => %08x\n", old, new);
-
-		old = qca_mii_read(0x0974);
-		qca_mii_write(0x0974, old & (~0x10000));
-		new = qca_mii_read(0x0974);
-		printk("0x0974: %08x => %08x\n", old, new);
-
-		/* allow CPU port (port 6) and other LAN port (port 1, 2, 3) to send packet to port 4 */
-		old = qca_mii_read(0x066c);
-		qca_mii_write(0x066c, old | 0x10);
-		new = qca_mii_read(0x066c);
-		printk("0x066c: %08x => %08x\n", old, new);
-
-		old = qca_mii_read(0x0678);
-		qca_mii_write(0x0678, old | 0x10);
-		new = qca_mii_read(0x0678);
-		printk("0x0678: %08x => %08x\n", old, new);
-
-		old = qca_mii_read(0x0684);
-		qca_mii_write(0x0684, old | 0x10);
-		new = qca_mii_read(0x0684);
-		printk("0x0684: %08x => %08x\n", old, new);
-
-		old = qca_mii_read(0x06a8);
-		qca_mii_write(0x06a8, old | 0x10);
-		new = qca_mii_read(0x06a8);
-		printk("0x06a8: %08x => %08x\n", old, new);
-	}
-
-	return count;
-}
-
-#define MIRROR_WAN  "mirror_wan"
-static void mirror_wan_init(void)
-{
-	struct proc_dir_entry *mirror_wan;
-
-	mirror_wan = create_proc_entry(MIRROR_WAN, 0666, NULL);
-
-	if(mirror_wan) {
-		mirror_wan->read_proc = mirror_wan_read;
-		mirror_wan->write_proc = mirror_wan_write;
-		mirror_wan->nlink = 1;
-	}
-}
-
-static void mirror_wan_cleanup(void)
-{
-	remove_proc_entry(MIRROR_WAN, NULL);
-}
 
 /**
  * @brief Module Init
  */
 int __init nss_gmac_host_interface_init(void)
 {
-	pr_info("**********************************************************");
-	pr_info("* Driver    :%s", nss_gmac_driver_string);
-	pr_info("* Version   :%s", nss_gmac_driver_version);
-	pr_info("* Copyright :%s", nss_gmac_copyright);
-	pr_info("**********************************************************");
+	pr_info("**********************************************************\n");
+	pr_info("* Driver    :%s\n", nss_gmac_driver_string);
+	pr_info("* Version   :%s\n", nss_gmac_driver_version);
+	pr_info("* Copyright :%s\n", nss_gmac_copyright);
+	pr_info("**********************************************************\n");
+
+#ifndef CONFIG_OF
+	/*
+	 * Initialize the GMAC platform data.
+	 * On failure random MAC address will be generated.
+	 */
+	if (nss_gmac_fixup_platform_data())
+		pr_info("%s: nss gmac platform data init failed\n", __func__);
+#endif
 
 	/* Initialize the Network dependent services */
 	if (nss_gmac_register_driver() != 0)
 		return -EFAULT;
 
-	miibus_get();
-	if (g_miibus) {
-		mirror_wan_init();
-		lan_led_ctrl_init();
-		dni_switch_phy_init();
-		set_lan_led_func(LED_OPTION_ON);
-		set_lan_led = set_lan_led_func;
-	}
-	blink_wan_led_init();
-
-#ifdef CONFIG_ETH_TM_ACCURATE_CONTROL
-	tm_netlink_init(THIS_MODULE);
-#endif
-
-#ifdef CONFIG_PSSTHRGH
-       pssthrgh_proc_init();
-#endif
 	return 0;
 }
 
@@ -1749,15 +1587,6 @@ int __init nss_gmac_host_interface_init(void)
  */
 void __exit nss_gmac_host_interface_exit(void)
 {
-	blink_wan_led_cleanup();
-	dni_switch_phy_cleanup();
-	lan_led_ctrl_cleanup();
-	mirror_wan_cleanup();
-	set_lan_led = NULL;
-
-#ifdef CONFIG_ETH_TM_ACCURATE_CONTROL
-	tm_netlink_deinit();
-#endif
 	nss_gmac_deregister_driver();
 }
 
@@ -1765,6 +1594,5 @@ module_init(nss_gmac_host_interface_init);
 module_exit(nss_gmac_host_interface_exit);
 
 MODULE_AUTHOR("Qualcomm Atheros");
-MODULE_LICENSE("GPL");
+MODULE_LICENSE("Dual BSD/GPL");
 MODULE_DESCRIPTION("NSS GMAC Network Driver");
-

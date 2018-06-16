@@ -1,6 +1,6 @@
 /*
  **************************************************************************
- * Copyright (c) 2013-2015, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2013-2017, The Linux Foundation. All rights reserved.
  *
  * Permission to use, copy, modify, and/or distribute this software for
  * any purpose with or without fee is hereby granted, provided that the
@@ -36,13 +36,16 @@
 #include <asm/cacheflush.h>
 #include <asm/io.h>
 
+#ifdef CONFIG_MDIO
+#include <linux/mdio.h>
+#endif
+
 #ifdef CONFIG_OF
 #include <msm_nss_gmac.h>
 #else
 #include <mach/msm_nss_gmac.h>
 #endif
 #include <nss_gmac_api_if.h>
-
 
 #define NSS_GMAC_IPC_OFFLOAD
 
@@ -58,6 +61,7 @@
 					   Descriptor pool/queue              */
 #define DEFAULT_DELAY_VARIABLE  10
 #define DEFAULT_LOOP_VARIABLE   10
+#define TSTAMP_LOOP_VARIABLE	1000
 #define MDC_CLK_DIV             (gmii_csr_clk0)
 
 #define NSS_GMAC_EXTRA			NET_IP_ALIGN
@@ -66,6 +70,13 @@
 /* Max size of buffer that can be programed into one field of desc */
 #define NSS_GMAC_MAX_DESC_BUFF		0x1FFF
 #define NSS_GMAC_RTL_VER		"(3.72a)"
+
+#define BILLION 			1000000000
+#define NSS_GMAC_AUX_REF_CLOCK		100000000 /* Aux Ref clock is 100 MHz */
+#define NSS_GMAC_SUB_SEC_VALUE (BILLION / NSS_GMAC_AUX_REF_CLOCK)
+#define NSS_GMAC_TS_ENABLE_MIN_USLEEP	10
+#define NSS_GMAC_TS_ENABLE_MAX_USLEEP	20
+#define NSS_GMAC_NS_UPDATE_ADDSUB	31
 
 /* Ethtool specific list of GMAC supported features */
 #define NSS_GMAC_SUPPORTED_FEATURES	(SUPPORTED_10baseT_Half		\
@@ -96,12 +107,13 @@
 /* MMD device addresses */
 #define ATH_MMD_DEVADDR_3				3
 #define ATH_MMD_DEVADDR_7				7
+#define NSS_GMAC_COMMON_DEVICE_NODE	"nss-gmac-common"
 
 static const uint8_t nss_gmac_driver_string[] =
 	"NSS GMAC Driver for RTL v" NSS_GMAC_RTL_VER;
 static const uint8_t nss_gmac_driver_version[] = "1.0";
 static const uint8_t nss_gmac_copyright[] =
-	"Copyright (c) 2013-2014 The Linux Foundation. All rights reserved.";
+	"Copyright (c) 2013-2016 The Linux Foundation. All rights reserved.";
 
 /**
  * @brief DMA Descriptor Structure
@@ -145,14 +157,14 @@ struct nss_gmac_global_ctx;
  * @brief NSS GMAC device data
  */
 struct nss_gmac_dev {
-	uint32_t mac_base;	/* base address of MAC registers              */
-	uint32_t dma_base;	/* base address of DMA registers              */
+	void __iomem *mac_base;	/* base address of MAC registers	      */
+	void __iomem *dma_base;	/* base address of DMA registers	      */
 	uint32_t phy_base;	/* PHY device address on MII interface        */
 	uint32_t macid;		/* Sequence number of Mac on the platform     */
+	uint32_t sgmii_pcs_chanid;	/* PCS Channel ID used by the GMAC    */
 	uint32_t version;	/* Gmac Revision version                      */
-	uint32_t emulation;	/* Running on emulation platform	      */
 	unsigned long int flags;/* status flags				      */
-	uint32_t drv_flags;	/* Driver specific feature flags		*/
+	uint32_t drv_flags;	/* Driver specific feature flags	      */
 
 	dma_addr_t tx_desc_dma;	/* Dma-able address of first tx descriptor
 				   either in ring or chain mode, this is used
@@ -218,6 +230,7 @@ struct nss_gmac_dev {
 					   bring up has been done             */
 	int32_t forced_speed;		/* Forced Speed */
 	int32_t forced_duplex;		/* Forced Duplex */
+	uint32_t aux_clk_freq;		/* Auxillary PTP Reference clk frequency */
 
 	struct net_device *netdev;
 	struct platform_device *pdev;
@@ -227,10 +240,6 @@ struct nss_gmac_dev {
 	spinlock_t stats_lock;		/* Lock to retrieve stats atomically  */
 	spinlock_t slock;		/* Lock to protect datapath	      */
 	struct mutex link_mutex;	/* Lock to protect link status change */
-	uint32_t gmac_power_down;	/* indicate to ISR whether the
-					   interrupts occurred in the process
-					   of powering down                   */
-
 	struct nss_gmac_global_ctx *ctx;/* Global NSS GMAC context            */
 	struct resource *memres;	/* memory resource                    */
 
@@ -240,6 +249,10 @@ struct nss_gmac_dev {
 	struct mii_bus *miibus;		/* MDIO bus associated with this GMAC */
 	struct nss_gmac_data_plane_ops *data_plane_ops;
 					/* ops to send messages to nss-drv    */
+					/* ops to send messages to nss-drv	*/
+#ifdef CONFIG_MDIO
+	struct mdio_if_info mdio_ctl;   /* Generic support for MDIO */
+#endif
 };
 
 
@@ -264,15 +277,16 @@ extern struct nss_gmac_global_ctx ctx;
 struct nss_gmac_global_ctx {
 	struct workqueue_struct *gmac_workqueue;
 	char *gmac_workqueue_name;
-	uint8_t *nss_base;	/* Base address of NSS GMACs'
-				   global interface registers */
+	uint8_t *nss_base;		/* Base address of NSS GMACs'
+					   global interface registers */
 	uint32_t *qsgmii_base;
-	uint32_t *clk_ctl_base;	/* Base address of platform
-				   clock control registers */
-	spinlock_t reg_lock;	/* Lock to protect NSS register	*/
-	uint32_t socver;	/* SOC version */
+	uint32_t *clk_ctl_base;		/* Base address of platform
+					   clock control registers */
+	uint32_t socver;		/* SOC version */
+	bool msm_clk_ctl_enabled;	/* Is MSM clock control initialization
+					   needed for this platform? */
 	struct nss_gmac_dev *nss_gmac[NSS_MAX_GMACS];
-	bool common_init_done;	/* Flag to hold common init done state */
+	bool common_init_done;		/* Flag to hold common init done state */
 };
 
 
@@ -284,6 +298,7 @@ enum nss_gmac_state {
 	__NSS_GMAC_RXPAUSE,
 	__NSS_GMAC_TXPAUSE,
 	__NSS_GMAC_LINKPOLL,	/* Poll link status			      */
+	__NSS_GMAC_TSTAMP,	/* HW Timestamp support Enabled		      */
 };
 
 /**
@@ -293,6 +308,8 @@ enum nss_gmac_state {
  */
 enum nss_gmac_priv_flags {
 	__NSS_GMAC_PRIV_FLAG_LINKPOLL,
+	__NSS_GMAC_PRIV_FLAG_TSTAMP,
+	__NSS_GMAC_PRIV_FLAG_IRQ_REQUESTED,
 	__NSS_GMAC_PRIV_FLAG_MAX,
 };
 #define NSS_GMAC_PRIV_FLAG(x)	(1 << __NSS_GMAC_PRIV_FLAG_ ## x)
@@ -300,17 +317,6 @@ enum nss_gmac_priv_flags {
 enum mii_link_status {
 	LINKDOWN = 0,
 	LINKUP = 1,
-};
-
-enum mii_duplex_mode {
-	HALFDUPLEX = 1,
-	FULLDUPLEX = 2,
-};
-
-enum mii_link_speed {
-	SPEED10 = 1,
-	SPEED100 = 2,
-	SPEED1000 = 3,
 };
 
 enum mii_loop_back {
@@ -676,7 +682,7 @@ enum gmac_interrupt_status_bit_definition {
 
 /* gmac_interrupt_mask	= 0x003C,	Mac Interrupt Mask register	*/
 enum gmac_interrupt_mask_bit_definition {
-	gmac_tSInt_mask = 0x00000200,		/* when set disables the time
+	gmac_ts_int_mask = 0x00000200,		/* when set disables the time
 						   stamp interrupt generation */
 	gmac_pmt_int_mask = 0x00000008,		/* when set Disables the
 						   assertion of PMT interrupt */
@@ -689,6 +695,18 @@ enum gmac_interrupt_mask_bit_definition {
 	gmac_rgmii_int_mask = 0x00000001,	/* when set disables the
 						   assertion of RGMII
 						   interrupt		      */
+};
+
+/* gmac_ts_control = 0x0700,	GMAC timestamp control register	*/
+enum gmac_gmac_ts_control_bit_definition {
+	gmac_ts_ena_mask = 0x00000001,		/*	timestamp enable mask	*/
+	gmac_ts_cf_updt_mask = 0x00000002,	/*	coarse/fine update mask	*/
+	gmac_ts_init_mask = 0x00000004,		/* 	timestamp init mask	*/
+	gmac_ts_updt_mask = 0x00000008,		/*	timestamp update mask	*/
+	gmac_ts_enall_mask = 0x00000100,	/*	enable all mask		*/
+	gmac_ts_tsctrlssr_mask = 0x00000200,	/* 	timestamp rollover control mask	*/
+	gmac_ts_ver2ena_mask = 0x00000400,	/*	PTP v2 version enable mask	*/
+	gmac_ts_ipv6ena_mask = 0x00001000,	/*	ipv6 enable mask	*/
 };
 
 /**********************************************************
@@ -1282,6 +1300,10 @@ enum mmc_enable {
 					   generated from tx counters   */
 };
 
+enum mmc_config_reg {
+	gmac_mmc_cor = 0x00000004,		/* Set mmc counters Clear-on-Read */
+};
+
 enum mmc_ip_related {
 	gmac_mmc_rx_ipc_intr_mask = 0x0200,
 /*Maintains the mask for interrupt generated from rx IPC statistic counters   */
@@ -1325,10 +1347,8 @@ static inline uint32_t nss_gmac_read_reg(uint32_t *regbase,
 	uint32_t addr = 0;
 	uint32_t data;
 
-	spin_lock(&ctx.reg_lock);
 	addr = (uint32_t)regbase + regoffset;
 	data = readl_relaxed((unsigned char *)addr);
-	spin_unlock(&ctx.reg_lock);
 
 	return data;
 }
@@ -1347,10 +1367,8 @@ static inline void nss_gmac_write_reg(uint32_t *regbase,
 {
 	uint32_t addr = 0;
 
-	spin_lock(&ctx.reg_lock);
 	addr = (uint32_t)regbase + regoffset;
 	writel_relaxed(regdata, (unsigned char *)addr);
-	spin_unlock(&ctx.reg_lock);
 }
 
 
@@ -1490,6 +1508,8 @@ int32_t nss_gmac_write_phy_reg(uint32_t *reg_base, uint32_t phy_base,
 int32_t nss_gmac_read_phy_reg(uint32_t *reg_base, uint32_t phy_base,
 			      uint32_t reg_offset, uint16_t *data,
 			      uint32_t mdc_clk_div);
+int32_t nss_gmac_ts_enable(struct nss_gmac_dev *gmacdev);
+void nss_gmac_ts_disable(struct nss_gmac_dev *gmacdev);
 
 /*
  * nss_gmac_common_init()
@@ -1515,60 +1535,45 @@ void nss_gmac_dev_init(struct nss_gmac_dev *gmacdev);
  */
 int32_t nss_gmac_dev_set_speed(struct nss_gmac_dev *gmacdev);
 
+#ifdef RUMI_EMULATION_SUPPORT
 /*
  * nss_gmac_spare_ctl()
  *	Spare Control reset. Required only for emulation.
  */
 void nss_gmac_spare_ctl(struct nss_gmac_dev *gmacdev);
+#endif
 
 /**
  * Initialize the rx descriptors for ring or chain mode operation.
- *	- Status field is initialized to 0.
- *	- end_of_ring set for the last descriptor.
- *	- buffer1 and buffer2 set to 0 for ring mode of operation. (note)
- *	- data1 and data2 set to 0. (note)
  * @param[in] pointer to dma_desc structure.
- * @param[in] whether end of ring
+ * @param[in] number of descriptors
  * @return void.
- * @note Initialization of the buffer1, buffer2, data1,data2 and status are not
- * done here. This only initializes whether one wants to use this descriptor
- * in chain mode or ring mode. For chain mode of operation the buffer2 and data2
- * are programmed before calling this function.
  */
 static inline void nss_gmac_rx_desc_init_ring(struct dma_desc *desc,
-					      bool last_ring_desc)
+					      uint32_t no_of_desc)
 {
-	desc->status = 0;
-	desc->length = last_ring_desc ? rx_desc_end_of_ring : 0;
-	desc->buffer1 = 0;
-	desc->data1 = 0;
+	struct dma_desc *last_desc = desc + no_of_desc - 1;
+	memset(desc, 0, no_of_desc * sizeof(struct dma_desc));
+	last_desc->length = rx_desc_end_of_ring;
 }
 
 /**
  * Initialize the tx descriptors for ring or chain mode operation.
- *	- Status field is initialized to 0.
- *	- end_of_ring set for the last descriptor.
- *	- buffer1 and buffer2 set to 0 for ring mode of operation. (note)
- *	- data1 and data2 set to 0. (note)
  * @param[in] pointer to dma_desc structure.
- * @param[in] whether end of ring
+ * @param[in] number of descriptors
  * @return void.
- * @note Initialization of the buffer1, buffer2, data1,data2 and status are not
- * done here. This only initializes whether one wants to use this descriptor
- * in chain mode or ring mode. For chain mode of operation the buffer2 and data2
- * are programmed before calling this function.
  */
 static inline void nss_gmac_tx_desc_init_ring(struct dma_desc *desc,
-					      bool last_ring_desc)
+					      uint32_t no_of_desc)
 {
-	desc->status = last_ring_desc ? tx_desc_end_of_ring : 0;
-	desc->length = 0;
-	desc->buffer1 = 0;
-	desc->data1 = 0;
+	struct dma_desc *last_desc = desc + no_of_desc - 1;
+	memset(desc, 0, no_of_desc * sizeof(struct dma_desc));
+	last_desc->status = tx_desc_end_of_ring;
 }
 
 void nss_gmac_init_rx_desc_base(struct nss_gmac_dev *gmacdev);
 void nss_gmac_init_tx_desc_base(struct nss_gmac_dev *gmacdev);
+void nss_gmac_tx_rx_desc_release(struct nss_gmac_dev *gmacdev);
 void nss_gmac_set_owner_dma(struct dma_desc *desc);
 void nss_gmac_set_desc_sof(struct dma_desc *desc);
 void nss_gmac_set_desc_eof(struct dma_desc *desc);
@@ -1991,7 +1996,6 @@ static inline void nss_gmac_reset_rx_qptr(struct nss_gmac_dev *gmacdev)
 	(gmacdev->busy_rx_desc)--;
 }
 
-
 /**
  * Clears all the pending interrupts.
  * If the Dma status register is read then all the interrupts gets cleared
@@ -2002,8 +2006,8 @@ static inline void nss_gmac_clear_interrupt(struct nss_gmac_dev *gmacdev)
 {
 	uint32_t data;
 
-	data = readl_relaxed((unsigned char *)gmacdev->dma_base + dma_status);
-	writel_relaxed(data, (unsigned char *)gmacdev->dma_base + dma_status);
+	data = readl_relaxed(gmacdev->dma_base + dma_status);
+	writel_relaxed(data, gmacdev->dma_base + dma_status);
 }
 
 
@@ -2018,10 +2022,10 @@ static inline uint32_t nss_gmac_get_interrupt_type(struct nss_gmac_dev *gmacdev)
 	uint32_t interrupts = 0;
 
 	interrupts =
-	    nss_gmac_read_reg((uint32_t *)gmacdev->dma_base, dma_status);
+	    nss_gmac_read_reg(gmacdev->dma_base, dma_status);
 
 	/* Clear interrupt here */
-	nss_gmac_write_reg((uint32_t *)gmacdev->dma_base, dma_status,
+	nss_gmac_write_reg(gmacdev->dma_base, dma_status,
 			   interrupts);
 
 	return interrupts;
@@ -2035,7 +2039,7 @@ static inline uint32_t nss_gmac_get_interrupt_type(struct nss_gmac_dev *gmacdev)
  */
 static inline uint32_t nss_gmac_get_interrupt_mask(struct nss_gmac_dev *gmacdev)
 {
-	return nss_gmac_read_reg((uint32_t *)gmacdev->dma_base, dma_interrupt);
+	return nss_gmac_read_reg(gmacdev->dma_base, dma_interrupt);
 }
 
 
@@ -2048,8 +2052,7 @@ static inline uint32_t nss_gmac_get_interrupt_mask(struct nss_gmac_dev *gmacdev)
 static inline void nss_gmac_enable_interrupt(struct nss_gmac_dev *gmacdev,
 					     uint32_t interrupts)
 {
-	nss_gmac_write_reg((uint32_t *)gmacdev->dma_base, dma_interrupt,
-			   interrupts);
+	nss_gmac_write_reg(gmacdev->dma_base, dma_interrupt, interrupts);
 }
 
 
@@ -2060,7 +2063,7 @@ static inline void nss_gmac_enable_interrupt(struct nss_gmac_dev *gmacdev,
  */
 static inline void nss_gmac_disable_mac_interrupt(struct nss_gmac_dev *gmacdev)
 {
-	nss_gmac_write_reg((uint32_t *)gmacdev->mac_base, gmac_interrupt_mask,
+	nss_gmac_write_reg(gmacdev->mac_base, gmac_interrupt_mask,
 			   0xffffffff);
 }
 
@@ -2075,8 +2078,7 @@ static inline void nss_gmac_disable_mac_interrupt(struct nss_gmac_dev *gmacdev)
  */
 static inline void nss_gmac_disable_interrupt_all(struct nss_gmac_dev *gmacdev)
 {
-	nss_gmac_write_reg((uint32_t *)gmacdev->dma_base, dma_interrupt,
-			   dma_int_disable);
+	nss_gmac_write_reg(gmacdev->dma_base, dma_interrupt, dma_int_disable);
 	nss_gmac_disable_mac_interrupt(gmacdev);
 }
 
@@ -2093,10 +2095,8 @@ static inline void nss_gmac_disable_interrupt(struct nss_gmac_dev *gmacdev,
 {
 	uint32_t data = 0;
 
-	data = ~interrupts & readl_relaxed((unsigned char *)gmacdev->dma_base
-							+ dma_interrupt);
-	writel_relaxed(data, (unsigned char *)gmacdev->dma_base
-							+ dma_interrupt);
+	data = ~interrupts & readl_relaxed(gmacdev->dma_base + dma_interrupt);
+	writel_relaxed(data, gmacdev->dma_base + dma_interrupt);
 }
 
 
@@ -2113,8 +2113,7 @@ void nss_gmac_enable_dma_tx(struct nss_gmac_dev *gmacdev);
  */
 static inline void nss_gmac_resume_dma_tx(struct nss_gmac_dev *gmacdev)
 {
-	nss_gmac_write_reg((uint32_t *)gmacdev->dma_base,
-							dma_tx_poll_demand, 0);
+	nss_gmac_write_reg(gmacdev->dma_base, dma_tx_poll_demand, 0);
 }
 
 
@@ -2127,8 +2126,7 @@ static inline void nss_gmac_resume_dma_tx(struct nss_gmac_dev *gmacdev)
  */
 static inline void nss_gmac_resume_dma_rx(struct nss_gmac_dev *gmacdev)
 {
-	nss_gmac_write_reg((uint32_t *)gmacdev->dma_base,
-							dma_rx_poll_demand, 0);
+	nss_gmac_write_reg(gmacdev->dma_base, dma_rx_poll_demand, 0);
 }
 
 void nss_gmac_take_desc_ownership(struct dma_desc *desc);
