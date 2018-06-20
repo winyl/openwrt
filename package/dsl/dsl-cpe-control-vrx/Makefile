@@ -17,7 +17,7 @@ PKG_SOURCE:=$(PKG_BASE_NAME)-$(PKG_VERSION).tar.gz
 PKG_BUILD_DIR:=$(KERNEL_BUILD_DIR)/dsl_cpe_control-$(PKG_VERSION)
 PKG_BUILD_DIR_NONBOND:=$(PKG_BUILD_DIR)/nonbond/dsl_cpe_control-$(PKG_VERSION)
 PKG_SOURCE_URL:=http://localhost
-PKG_BUILD_DEPENDS:=dsl-cpe-api-vrx dsl-cpe-mei-vrx dsl-cpe-control-vrx_DTI:lib-dti
+PKG_BUILD_DEPENDS:=dsl-cpe-api-vrx dsl-cpe-mei-vrx
 
 LANTIQ_BIN_DIR=/opt/lantiq/bin
 LANTIQ_BIN_DIR_NONBOND=/opt/lantiq/bin/nonbond
@@ -71,24 +71,38 @@ define Package/dsl-cpe-control/description
 	Lantiq DSL CPE for Amazon SE, Danube,Vinax and VRx.
 endef
 
-define dsl_pkg
-define Package/$(1)
-	$(call Package/dsl-cpe-control)
-	TITLE:=DSL CPE control $(if $(subst $(PKG_NAME),,$(1)),non-bond )application
-	DEPENDS:=dsl-cpe-api-vrx +libpthread +librt +lib-dti \
-		$(if $(subst $(PKG_NAME),,$(1)),@BUILD_SEPARATE_NONBONDED_BINS) \
-		$(if $(subst $(PKG_NAME),,$(1)),,+BUILD_SEPARATE_NONBONDED_BINS:$(PKG_NAME)-nonbond)
-	$(if $(subst $(PKG_NAME),,$(1)),,MENU:=1)
+#define dsl_pkg
+define Package/$(PKG_NAME)
+  $(call Package/dsl-cpe-control)
+  TITLE:=DSL CPE control $(PKG_NAME) application
+  DEPENDS:=dsl-cpe-api-vrx +libpthread +librt +lib-dti +BUILD_SEPARATE_NONBONDED_BINS:$(PKG_NAME)-nonbond
+  MENU:=1
 endef
 
-define Package/$(1)/description
-	This package contains the DSL CPE control $(if $(subst $(PKG_NAME),,$(1)),non-bond )application.
+define Package/$(PKG_NAME)-nonbond
+  $(call Package/dsl-cpe-control)
+  TITLE:=DSL CPE control $(PKG_NAME)-nonbond application
+  DEPENDS:=+libpthread +librt +lib-dti
+  IMPLY:=+dsl-cpe-api-vrx
+  MENU:=1
+endef
+
+define Package/$(PKG_NAME)/description
+This package contains the DSL CPE control $(PKG_NAME) application.
 
 	Supported Devices:
 		- VRX200 Family
 		- VRX300 Family
 endef
+
+define Package/$(PKG_NAME)-nonbond/description
+This package contains the DSL CPE control $(PKG_NAME)-nonbond application.
+
+	Supported Devices:
+		- VRX200 Family
+		- VRX300 Family
 endef
+#endef
 
 define Package/$(PKG_NAME)/config
 $(call Package/$(PKG_NAME)/override_version)
@@ -232,5 +246,5 @@ define Package/$(PKG_NAME)-nonbond/install
 	$(INSTALL_BIN) $(PKG_BUILD_DIR_NONBOND)/src/dsl_cpe_control $(1)/$(LANTIQ_BIN_DIR_NONBOND)
 endef
 
-$(foreach pkg_name,$(PKG_NAME) $(PKG_NAME)-nonbond,$(eval $(call dsl_pkg,$(pkg_name))))
+#$(foreach pkg_name,$(PKG_NAME) $(PKG_NAME)-nonbond,$(eval $(call dsl_pkg,$(pkg_name))))
 $(foreach pkg_name,$(PKG_NAME) $(PKG_NAME)-nonbond,$(eval $(call BuildPackage,$(pkg_name))))

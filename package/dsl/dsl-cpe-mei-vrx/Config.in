@@ -1,4 +1,10 @@
 menu "Configuration"
+	config BUILD_SEPARATE_NONBONDED_BINS
+		bool "Build separate non-bonded binaries"
+		default n
+		help
+		  This option builds non-bonded binaries separately under rootfs apart from bonded binaries
+
 	depends on PACKAGE_dsl-cpe-mei-vrx
 
 	choice
@@ -23,12 +29,6 @@ menu "Configuration"
 		  Actiavtes build for VRX300 Family, VRX320 Subfamily.
 
 	endchoice
-
-	config BUILD_SEPARATE_NONBONDED_BINS
-		bool "Build separate non-bonded binaries"
-		default n
-		help
-		  This option builds non-bonded binaries separately under rootfs apart from bonded binaries
 
 	config VRX_MAX_DEVICE
 		string

@@ -55,27 +55,48 @@ ifeq ($(DUMP),)
 		grep '^CONFIG_VRX_' $(TOPDIR)/.config) | md5sum)
 endif
 
-define dsl_pkg
-define Package/$(1)
-	SECTION:=driver
-	CATEGORY:=Lantiq
-	SUBMENU:=DSL Subsystem
-	TITLE:=DSL CPE API $(if $(subst $(PKG_NAME),,$(1)),non-bond )driver
-	URL:=http://www.lantiq.com/
-	MAINTAINER:=Lantiq Deutschland GmbH
-	DEPENDS:=+dsl-cpe-mei-vrx $(if $(subst $(PKG_NAME),,$(1)),@BUILD_SEPARATE_NONBONDED_BINS) \
-		$(if $(subst $(PKG_NAME),,$(1)),,+BUILD_SEPARATE_NONBONDED_BINS:$(PKG_NAME)-nonbond)
-  	$(if $(subst $(PKG_NAME),,$(1)),,MENU:=1)
+#define dsl_pkg
+define Package/$(PKG_NAME)
+  SECTION:=driver
+  CATEGORY:=Lantiq
+  SUBMENU:=DSL Subsystem
+  TITLE:=DSL CPE API $(PKG_NAME) driver
+  URL:=http://www.lantiq.com/
+  MAINTAINER:=Lantiq Deutschland GmbH
+  DEPENDS:=+dsl-cpe-mei-vrx +BUILD_SEPARATE_NONBONDED_BINS:$(PKG_NAME)-nonbond
+  MENU:=1
 endef
 
-define Package/$(1)/description
-	This package contains the Lantiq DSL CPE API $(if $(subst $(PKG_NAME),,$(1)),non-bond )driver.
+define Package/$(PKG_NAME)-nonbond
+  SECTION:=driver
+  CATEGORY:=Lantiq
+  SUBMENU:=DSL Subsystem
+  TITLE:=DSL CPE API $(PKG_NAME)-nonbond driver
+  URL:=http://www.lantiq.com/
+  MAINTAINER:=Lantiq Deutschland GmbH
+  IMPLY:=+dsl-cpe-mei-vrx
+  MENU:=1
+endef
+
+
+define Package/$(PKG_NAME)/description
+	This package contains the Lantiq DSL CPE API $(PKG_NAME) driver.
 
 	Supported Devices:
 		- VRX200 Family
 		- VRX300 Family
 endef
+
+define Package/$(PKG_NAME)-nonbond/description
+	This package contains the Lantiq DSL CPE API $(PKG_NAME)-nonbond driver.
+
+	Supported Devices:
+		- VRX200 Family
+		- VRX300 Family
 endef
+
+
+#endef
 
 define Package/$(PKG_NAME)/config
 $(call Package/$(PKG_NAME)/override_version)
@@ -162,10 +183,11 @@ define Build/Compile
 	$(call Build/Compile/Default)
 	$(if $(CONFIG_PACKAGE_$(PKG_NAME)-nonbond),
 		$(eval PKG_BUILD_DIR:=$(PKG_BUILD_DIR_NONBOND))
-		$(eval CONFIGURE_ARGS=$(subst with-max-device="$(DSL_MAX_DEVICE)",with-max-device="1",$(CONFIGURE_ARGS)))
-		$(eval CONFIGURE_ARGS=$(subst with-lines-per-device="$(DSL_LINES_PER_DEVICE)",with-lines-per-device="1",$(CONFIGURE_ARGS)))
+		$(eval CONFIGURE_ARGS=$(subst with-max-device=$(DSL_MAX_DEVICE),with-max-device=1,$(CONFIGURE_ARGS)))
+		$(eval CONFIGURE_ARGS=$(subst with-lines-per-device=$(DSL_LINES_PER_DEVICE),with-lines-per-device=1,$(CONFIGURE_ARGS)))
 		mkdir -p $(PKG_BUILD_DIR)
-		$(call Build/Prepare/Default)
+		$(SH_FUNC) $(call UNPACK_CMD,$(PKG_BUILD_DIR)) $(call CRLF_CMD,$(PKG_BUILD_DIR))
+		$(call Build/Patch/Default)
 		$(call Build/Configure)
 		$(call Build/Compile/Default)
 	)
@@ -196,5 +218,5 @@ define Package/$(PKG_NAME)-nonbond/install
 	$(INSTALL_BIN) $(PKG_BUILD_DIR_NONBOND)/src/drv_dsl_cpe_api$(PKG_MODULE_EXTENSION) $(1)/$(LANTIQ_BIN_DIR_NONBOND)
 endef
 
-$(foreach pkg_name,$(PKG_NAME) $(PKG_NAME)-nonbond,$(eval $(call dsl_pkg,$(pkg_name))))
+#$(foreach pkg_name,$(PKG_NAME) $(PKG_NAME)-nonbond,$(eval $(call dsl_pkg,$(pkg_name))))
 $(foreach pkg_name,$(PKG_NAME) $(PKG_NAME)-nonbond,$(eval $(call BuildPackage,$(pkg_name))))

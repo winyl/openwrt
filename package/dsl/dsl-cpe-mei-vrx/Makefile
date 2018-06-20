@@ -57,26 +57,47 @@ ifeq ($(DUMP),)
 		grep '^CONFIG_VRX320_PTM_VECTORING' $(TOPDIR)/.config) | md5sum)
 endif
 
-define dsl_pkg
-define Package/$(1)
+#define dsl_pkg
+define Package/$(PKG_NAME)
   SECTION:=driver
   CATEGORY:=Lantiq
   SUBMENU:=DSL Subsystem
-  TITLE:=DSL CPE MEI $(if $(subst $(PKG_NAME),,$(1)),non-bond )Driver for VRX Family
+  TITLE:=DSL CPE MEI $(PKG_NAME) Driver for VRX Family
   URL:=http://www.Lantiq.com/
   MAINTAINER:=Lantiq Deutschland GmbH
-  DEPENDS:=$(if $(subst $(PKG_NAME),,$(1)),@BUILD_SEPARATE_NONBONDED_BINS) \
-	+kmod-dsl-cpe-mei-vrx +kmod-ltq-ifxos $(if $(subst $(PKG_NAME),,$(1)),,+BUILD_SEPARATE_NONBONDED_BINS:$(PKG_NAME)-nonbond)
-  $(if $(subst $(PKG_NAME),,$(1)),,MENU:=1)
+  DEPENDS:=+kmod-dsl-cpe-mei-vrx +kmod-ltq-ifxos +BUILD_SEPARATE_NONBONDED_BINS:$(PKG_NAME)-nonbond
+  MENU:=1
 endef
+
+define Package/$(PKG_NAME)-nonbond
+  SECTION:=driver
+  CATEGORY:=Lantiq
+  SUBMENU:=DSL Subsystem
+  TITLE:=DSL CPE MEI $(PKG_NAME)-nonbond Driver for VRX Family
+  URL:=http://www.Lantiq.com/
+  MAINTAINER:=Lantiq Deutschland GmbH
+  DEPENDS:=+kmod-dsl-cpe-mei-vrx +kmod-ltq-ifxos
+  MENU:=1
+endef
+
+
 # +kmod-ifxos in upper depends
-define Package/$(1)/description
-	Lantiq MEI CPE $(if $(subst $(PKG_NAME),,$(1)),non-bond )Driver
+define Package/$(PKG_NAME)/description
+	Lantiq MEI CPE $(PKG_NAME) Driver
 	Supported Devices:
 		- VRX200 Family
 		- VRX300 Family
 endef
+
+define Package/$(PKG_NAME)-nonbond/description
+	Lantiq MEI CPE $(PKG_NAME)-non-bond Driver
+	Supported Devices:
+		- VRX200 Family
+		- VRX300 Family
 endef
+
+
+#endef
 
 define KernelPackage/$(PKG_NAME)
   SUBMENU:=Lantiq
@@ -271,6 +292,6 @@ endif
 	$(INSTALL_BIN) $(PKG_BUILD_DIR_NONBOND)/src/$(PKG_BASE_NAME)$(PKG_MODULE_EXTENSION) $(1)/$(LANTIQ_BIN_DIR_NONBOND)
 endef
 
-$(foreach pkg_name,$(PKG_NAME) $(PKG_NAME)-nonbond,$(eval $(call dsl_pkg,$(pkg_name))))
+#$(foreach pkg_name,$(PKG_NAME) $(PKG_NAME)-nonbond,$(eval $(call dsl_pkg,$(pkg_name))))
 $(foreach pkg_name,$(PKG_NAME) $(PKG_NAME)-nonbond,$(eval $(call BuildPackage,$(pkg_name))))
 $(eval $(call KernelPackage,$(PKG_NAME)))
