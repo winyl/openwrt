@@ -28,7 +28,7 @@ define KernelPackage/ltq-ifxos
   SUBMENU:=Libraries
   TITLE:=Lantiq OS abstraction library
   URL:=http://www.lantiq.com/
-  DEPENDS:=@TARGET_lantiq||TARGET_ipq806x
+  DEPENDS:=@TARGET_lantiq||TARGET_ipq806x_DEVICE_netgear_d7800
   FILES:=$(PKG_BUILD_DIR)/src/drv_ifxos.ko
   AUTOLOAD:=$(call AutoLoad,10,drv_ifxos)
 endef
