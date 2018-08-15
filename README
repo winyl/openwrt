@@ -31,4 +31,11 @@ Sunshine!
 	Your OpenWrt Community
 	http://www.openwrt.org
 
+________________
+The D7800xdsl build.
 
+The D7800 config is in the ./config dir. You need to copy in to root project folder.
+There are additional source archives to be put in ./dl dir from Netgear GPL Sources
+to be able to compile the source. Modem activation is project still in very early phases of develompment.
+It does not compile all pacakges and needs testing.
+    Winyl
