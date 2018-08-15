@@ -49,6 +49,7 @@ ramips_setup_interfaces()
 	dcs-930|\
 	dcs-930l-b1|\
 	ht-tm02|\
+	kimax,u35wf|\
 	linkits7688 | \
 	m2m|\
 	microwrt|\
@@ -102,6 +103,7 @@ ramips_setup_interfaces()
 	mzk-750dhp|\
 	mzk-w300nh2|\
 	d-team,newifi-d2|\
+	netgear,r6120|\
 	nixcore-x1-8M|\
 	nixcore-x1-16M|\
 	oy-0001|\
@@ -155,6 +157,10 @@ ramips_setup_interfaces()
 	wrh-300cr)
 		ucidef_set_interface_lan "eth0"
 		;;
+	dlink,dwr-118-a2)
+		ucidef_add_switch "switch0" \
+			"1:lan:2" "2:lan:1" "3:lan:3" "4:lan" "0:wan" "6@eth0"
+		;;
 	mir3g)
 		ucidef_add_switch "switch0" \
 			"2:lan:2" "3:lan:1" "1:wan" "6t@eth0"
@@ -197,6 +203,7 @@ ramips_setup_interfaces()
 	gl-mt300n|\
 	gl-mt750|\
 	hg255d|\
+	hiwifi,hc5861b|\
 	jhr-n805r|\
 	jhr-n825r|\
 	jhr-n926r|\
@@ -231,6 +238,8 @@ ramips_setup_interfaces()
 		;;
 	dir-860l-b1|\
 	elecom,wrc-1167ghbk2-s|\
+	elecom,wrc-2533gst|\
+	iodata,wn-ax1167gr|\
 	iodata,wn-gx300gr)
 		ucidef_add_switch "switch0" \
 			"1:lan:4" "2:lan:3" "3:lan:2" "4:lan:1" "0:wan" "6@eth0"
@@ -278,6 +287,11 @@ ramips_setup_interfaces()
 	mt7620a_mt7530)
 		ucidef_add_switch "switch1" \
 			"0:lan" "1:lan" "2:lan" "3:lan" "4:wan" "6@eth0"
+		;;
+	edimax,br-6478ac-v2|\
+	tplink,c2-v1)
+		ucidef_add_switch "switch1" \
+			"1:lan" "2:lan" "3:lan" "4:lan" "0:wan" "6@eth0"
 		;;
 	hc5*61|\
 	y1s)
@@ -337,10 +351,6 @@ ramips_setup_interfaces()
 	wlr-6000)
 		ucidef_add_switch "switch0" \
 			"1:lan" "2:lan" "3:lan" "4:lan" "5:wan" "0@eth0"
-		;;
-	tplink,c2-v1)
-		ucidef_add_switch "switch1" \
-			"1:lan" "2:lan" "3:lan" "4:lan" "0:wan" "6@eth0"
 		;;
 	tplink,tl-wr902ac-v3)
 		ucidef_add_switch "switch0" \
@@ -456,6 +466,7 @@ ramips_setup_macs()
 		wan_mac=$(mtd_get_mac_ascii factory wanmac)
 		;;
 	dlink,dwr-116-a1|\
+	dlink,dwr-118-a2|\
 	dlink,dwr-921-c1)
 		wan_mac=$(jboot_config_read -m -i $(find_mtd_part "config") -o 0xE000)
 		lan_mac=$(macaddr_add "$wan_mac" 1)
@@ -463,7 +474,12 @@ ramips_setup_macs()
 	e1700)
 		wan_mac=$(mtd_get_mac_ascii config WAN_MAC_ADDR)
 		;;
+	edimax,br-6478ac-v2)
+		lan_mac=$(cat /sys/class/net/eth0/address)
+		wan_mac=$(macaddr_add "$lan_mac" 2)
+		;;
 	elecom,wrc-1167ghbk2-s|\
+	elecom,wrc-2533gst|\
 	sk-wb8)
 		wan_mac=$(mtd_get_mac_binary factory 57350)
 		;;
@@ -473,11 +489,13 @@ ramips_setup_macs()
 		;;
 	hc5*61|\
 	hc5661a|\
-	hc5962)
+	hc5962|\
+	hiwifi,hc5861b)
 		lan_mac=`mtd_get_mac_ascii bdinfo "Vfac_mac "`
 		[ -n "$lan_mac" ] || lan_mac=$(cat /sys/class/net/eth0/address)
 		wan_mac=$(macaddr_add "$lan_mac" 1)
 		;;
+	iodata,wn-ax1167gr|\
 	iodata,wn-gx300gr)
 		wan_mac=$(macaddr_add "$(mtd_get_mac_binary Factory 4)" 1)
 		;;
