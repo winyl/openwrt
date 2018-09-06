@@ -1,0 +1,13 @@
+--- a/ipq806x/nss_gmac_ctrl.c
++++ b/ipq806x/nss_gmac_ctrl.c
+@@ -547,8 +547,8 @@ static int nss_gmac_fadj(struct device *
+ 	struct nss_gmac_dev *gmacdev = (struct nss_gmac_dev *)netdev_priv(to_net_dev(dev));
+ 	int64_t offset = 0;
+ 	uint64_t direction = 0;
+-	uint32_t sec;
+-	uint32_t nsec;
++	uint64_t sec;
++	uint64_t nsec;
+ 	uint32_t data, timeout;
+ 
+ 	if (!count) {
