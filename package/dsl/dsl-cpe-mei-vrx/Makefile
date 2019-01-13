@@ -193,8 +193,8 @@ define Build/Configure
 	$(call Build/Configure/Default)
 endef
 define Build/Prepare
-	$(CP) ./files/kernel/include/* $(LINUX_DIR)/include/net
-	$(CP) ./files/kernel/driver/* $(LINUX_DIR)/drivers/net/ethernet
+#	$(CP) ./files/kernel/include/* $(LINUX_DIR)/include/net
+#	$(CP) ./files/kernel/driver/* $(LINUX_DIR)/drivers/net/ethernet
 	$(call Build/Prepare/Default)
 endef
 define Build/Clean
