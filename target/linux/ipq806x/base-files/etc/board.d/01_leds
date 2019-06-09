@@ -24,7 +24,12 @@ nec,wg2600hp)
 	ucidef_set_led_wlan "wlan5g" "WLAN5G" "${boardname}:green:wlan5g" "phy0tpt"
 	ucidef_set_led_switch "wan" "WAN" "${boardname}:green:active" "switch0" "0x1e"
 	;;
-netgear,d7800 |\
+netgear,d7800 )
+	ucidef_set_led_usbport "usb1" "USB 1" "${boardname}:green:usb1" "usb1-port1" "usb2-port1"
+	ucidef_set_led_usbport "usb2" "USB 2" "${boardname}:green:usb2" "usb3-port1" "usb4-port1"
+	ucidef_set_led_netdev "wan" "WAN" "${boardname}:white:wan" "eth0"
+	ucidef_set_led_ide "esata" "eSATA" "${boardname}:white:esata"	
+	;;
 netgear,r7500 |\
 netgear,r7500v2 |\
 netgear,r7800)

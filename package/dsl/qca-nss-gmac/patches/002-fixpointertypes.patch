@@ -1,0 +1,19 @@
+--- a/ipq806x/nss_gmac_ctrl.c
++++ b/ipq806x/nss_gmac_ctrl.c
+@@ -296,7 +296,7 @@ void nss_gmac_tx_rx_desc_init(struct nss
+  * @param[in] pointer to net_device_stats64 structure.
+  * @return Returns pointer to net_device_stats64 structure.
+  */
+-struct rtnl_link_stats64 *nss_gmac_get_stats64(struct net_device *netdev,
++void nss_gmac_get_stats64(struct net_device *netdev,
+ 						struct rtnl_link_stats64 *stats)
+ {
+ 	struct nss_gmac_dev *gmacdev = NULL;
+@@ -308,7 +308,6 @@ struct rtnl_link_stats64 *nss_gmac_get_s
+ 	memcpy(stats, &gmacdev->stats, sizeof(*stats));
+ 	spin_unlock_bh(&gmacdev->stats_lock);
+ 
+-	return stats;
+ }
+ 
+ 

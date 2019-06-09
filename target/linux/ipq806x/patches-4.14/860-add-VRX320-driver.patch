@@ -69,7 +69,7 @@
 +#define IFX_REG_W32(_v, _r)               __raw_writel((_v), (volatile unsigned int *)(_r))
 +#define IFX_REG_W32_MASK(_clr, _set, _r)   IFX_REG_W32((IFX_REG_R32((_r)) & ~(_clr)) | (_set), (_r))
 +#define CPHYSADDR		__virt_to_phys
-+int read_c0_count()
++int read_c0_count(void)
 +{
 +	return 0;
 +}
@@ -81,8 +81,8 @@
 +
 +#define REG32(addr)         (*((volatile u32*)(addr)))
 +void *tx=NULL, *rx=NULL;
-+void *txphy, *rxphy;
-+extern struct dma_map_ops arm_dma_ops;
++static void *txphy, *rxphy;
++/* extern struct dma_map_ops arm_dma_ops; #declaration is in include/linux/dma-mapping.h:198 */
 +static int test_module = CDMA_TEST;
 +static int dma_data_length = 1024;
 +static int dma_mode = 0;
@@ -132,7 +132,7 @@
 +{
 +	int i;
 +	char *c =desc;
-+	printk("dumping desc located at virtual=%#x\n", c);
++	printk("dumping desc located at virtual=%#s\n", c);
 +	for(i=0; i<len; i+=8) {
 +		printk("%02x %02x %02x %02x %02x %02x %02x %02x\n",
 +			c[i], c[i+1], c[i+2], c[i+3], c[i+4], c[i+5], c[i+6], c[i+7]);
@@ -186,7 +186,7 @@
 +    /* Clear it first */
 +    IFX_REG_W32(PPE_MBOX_TEST_BIT, PPE_MBOX_IGU0_ISRC(membase));
 +
-+    ret = request_irq(dev->irq, ltq_pcie_ep_ppe_intr, IORESOURCE_DISABLED, "PPE_MSI", dev);
++    ret = request_irq(dev->irq, ltq_pcie_ep_ppe_intr, 0 , "PPE_MSI", dev);
 +    if (ret) {
 +        printk(KERN_ERR "%s request irq %d failed\n", __func__, dev->irq);
 +        return -1;
@@ -296,7 +296,7 @@
 +{
 +    unsigned int i;
 +    cdma_tx_descriptor_t *tx_desc;
-+    printk("txphy = %#x\n", txphy);
++    printk("txphy = %#p\n", txphy);
 +
 +    for (i = 0; i < desc_num; i++) {
 +        tx_desc = (cdma_tx_descriptor_t *)(desc_ptr_base + (i * sizeof(cdma_tx_descriptor_t)));
@@ -322,7 +322,7 @@
 +	memset(tx_desc, '\0', 8);
 +	memcpy((char *)tx_desc, &txw1, 4);
 +        if (dir == SOC_TO_EP) { /* src is SoC, dst is VRX218 */
-+		int txaddr=(PCIE_EP_OUTBOUND_INTERNAL_BASE + txphy + i*dma_data_length);
++		int txaddr=*(PCIE_EP_OUTBOUND_INTERNAL_BASE + txphy + i*dma_data_length);
 +		memcpy((char *)tx_desc+4, &txaddr, 4);
 +	} else {
 +            	int txaddr = VRX218_ADDR(((u32)(data_ptr_base + ( i * dma_data_length ))));
@@ -598,7 +598,7 @@
 +    cdma_tx_ch_cfg(membase, dma_mode, CDMA_MEMCOPY_TX_CHAN, tx_desc_base, tx_data_addr, desc_num);
 +    cdma_rx_ch_cfg(membase, dma_mode, CDMA_MEMCOPY_RX_CHAN, rx_desc_base, rx_data_addr, desc_num);
 +
-+    ret = request_irq(dev->irq, ltq_pcie_ep_cdma_intr, IORESOURCE_DISABLED, "CDMA_MSI", dev);
++    ret = request_irq(dev->irq, ltq_pcie_ep_cdma_intr, 0 , "CDMA_MSI", dev);
 +    if (ret) {
 +        printk(KERN_ERR "%s request irq %d failed\n", __func__, dev->irq);
 +        return;
