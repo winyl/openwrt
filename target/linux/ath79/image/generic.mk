@@ -58,6 +58,18 @@ define Build/nec-fw
   mv $@.new $@
 endef
 
+define Build/pisen_wmb001n-factory
+  -[ -f "$@" ] && \
+  mkdir -p "$@.tmp" && \
+  cp "$(KDIR)/loader-$(word 1,$(1)).uImage" "$@.tmp/uImage" && \
+  mv "$@" "$@.tmp/rootfs" && \
+  cp "bin/pisen_wmb001n_factory-header.bin" "$@" && \
+  $(TAR) -cp --numeric-owner --owner=0 --group=0 --mode=a-s --sort=name \
+    $(if $(SOURCE_DATE_EPOCH),--mtime="@$(SOURCE_DATE_EPOCH)") \
+    -C "$@.tmp" . | gzip -9n >> "$@" && \
+  rm -rf "$@.tmp"
+endef
+
 define Device/seama
   KERNEL := kernel-bin | append-dtb | relocate-kernel | lzma
   KERNEL_INITRAMFS := $$(KERNEL) | seama
@@ -110,6 +122,16 @@ define Device/adtran_bsap1840
   DEVICE_MODEL := BSAP-1840
 endef
 TARGET_DEVICES += adtran_bsap1840
+
+define Device/alfa-network_ap121f
+  ATH_SOC := ar9331
+  DEVICE_VENDOR := ALFA Network
+  DEVICE_MODEL := AP121F
+  DEVICE_PACKAGES := kmod-usb2 kmod-usb-chipidea2 kmod-usb-storage -swconfig
+  IMAGE_SIZE := 16064k
+  SUPPORTED_DEVICES += ap121f
+endef
+TARGET_DEVICES += alfa-network_ap121f
 
 define Device/aruba_ap-105
   ATH_SOC := ar7161
@@ -234,6 +256,16 @@ define Device/comfast_cf-e120a-v3
 endef
 TARGET_DEVICES += comfast_cf-e120a-v3
 
+define Device/comfast_cf-e314n-v2
+  ATH_SOC := qca9531
+  DEVICE_VENDOR := COMFAST
+  DEVICE_MODEL := CF-E314N
+  DEVICE_VARIANT := v2
+  DEVICE_PACKAGES := rssileds
+  IMAGE_SIZE := 7936k
+endef
+TARGET_DEVICES += comfast_cf-e314n-v2
+
 define Device/comfast_cf-e5
   ATH_SOC := qca9531
   DEVICE_VENDOR := COMFAST
@@ -243,6 +275,26 @@ define Device/comfast_cf-e5
   IMAGE_SIZE := 16192k
 endef
 TARGET_DEVICES += comfast_cf-e5
+
+define Device/comfast_cf-wr650ac-v1
+  ATH_SOC := qca9558
+  DEVICE_VENDOR := COMFAST
+  DEVICE_MODEL := CF-WR650AC
+  DEVICE_VARIANT := v1
+  DEVICE_PACKAGES := kmod-ath10k-ct ath10k-firmware-qca988x-ct
+  IMAGE_SIZE := 16128k
+endef
+TARGET_DEVICES += comfast_cf-wr650ac-v1
+
+define Device/comfast_cf-wr650ac-v2
+  ATH_SOC := qca9558
+  DEVICE_VENDOR := COMFAST
+  DEVICE_MODEL := CF-WR650AC
+  DEVICE_VARIANT := v2
+  DEVICE_PACKAGES := kmod-ath10k-ct ath10k-firmware-qca988x-ct
+  IMAGE_SIZE := 16000k
+endef
+TARGET_DEVICES += comfast_cf-wr650ac-v2
 
 define Device/devolo_dvl1200e
   ATH_SOC := qca9558
@@ -354,6 +406,47 @@ define Device/dlink_dir-859-a1
   SUPPORTED_DEVICES += dir-859-a1
 endef
 TARGET_DEVICES += dlink_dir-859-a1
+
+define Device/dlink_dir-842-c
+  ATH_SOC := qca9563
+  DEVICE_VENDOR := D-Link
+  DEVICE_MODEL := DIR-842
+  KERNEL := kernel-bin | append-dtb | relocate-kernel | lzma
+  KERNEL_INITRAMFS := $$(KERNEL) | seama
+  IMAGES += factory.bin
+  SEAMA_MTDBLOCK := 5
+  SEAMA_SIGNATURE := wrgac65_dlink.2015_dir842
+  # 64 bytes offset:
+  # - 28 bytes seama_header
+  # - 36 bytes of META data (4-bytes aligned)
+  IMAGE/default := append-kernel | uImage lzma | pad-offset $$$$(BLOCKSIZE) 64 | append-rootfs
+  IMAGE/sysupgrade.bin := \
+	$$(IMAGE/default) | seama | pad-rootfs | append-metadata | check-size $$$$(IMAGE_SIZE)
+  IMAGE/factory.bin := \
+	$$(IMAGE/default) | pad-rootfs -x 64 | seama | seama-seal | check-size $$$$(IMAGE_SIZE)
+  IMAGE_SIZE := 15680k
+endef
+
+define Device/dlink_dir-842-c1
+  $(Device/dlink_dir-842-c)
+  DEVICE_VARIANT := C1
+  DEVICE_PACKAGES := kmod-ath10k-ct ath10k-firmware-qca9888-ct
+endef
+TARGET_DEVICES += dlink_dir-842-c1
+
+define Device/dlink_dir-842-c2
+  $(Device/dlink_dir-842-c)
+  DEVICE_VARIANT := C2
+  DEVICE_PACKAGES := kmod-usb2 kmod-ath10k-ct ath10k-firmware-qca9888-ct
+endef
+TARGET_DEVICES += dlink_dir-842-c2
+
+define Device/dlink_dir-842-c3
+  $(Device/dlink_dir-842-c)
+  DEVICE_VARIANT := C3
+  DEVICE_PACKAGES := kmod-ath10k-ct ath10k-firmware-qca9888-ct
+endef
+TARGET_DEVICES += dlink_dir-842-c3
 
 define Device/elecom_wrc-1750ghbk2-i
   ATH_SOC := qca9563
@@ -723,6 +816,23 @@ define Device/netgear_wndr3700v2
   SUPPORTED_DEVICES += wndr3700v2
 endef
 TARGET_DEVICES += netgear_wndr3700v2
+
+define Device/pisen_wmb001n
+  ATH_SOC := ar9341
+  DEVICE_VENDOR := PISEN
+  DEVICE_MODEL := WMB001N
+  IMAGE_SIZE := 14080k
+  DEVICE_PACKAGES := kmod-i2c-core kmod-i2c-gpio kmod-usb2
+  LOADER_TYPE := bin
+  LOADER_FLASH_OFFS := 0x20000
+  COMPILE := loader-$(1).bin loader-$(1).uImage
+  COMPILE/loader-$(1).bin := loader-okli-compile
+  COMPILE/loader-$(1).uImage := append-loader-okli $(1) | pad-to 64k | lzma | uImage lzma
+  KERNEL := kernel-bin | append-dtb | lzma | uImage lzma -M 0x4f4b4c49
+  IMAGES += factory.bin
+  IMAGE/factory.bin := $$(IMAGE/sysupgrade.bin) | pisen_wmb001n-factory $(1)
+endef
+TARGET_DEVICES += pisen_wmb001n
 
 define Device/pisen_wmm003n
   $(Device/tplink-8mlzma)
