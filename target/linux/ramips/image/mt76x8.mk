@@ -120,12 +120,32 @@ define Device/hiwifi_hc5861b
 endef
 TARGET_DEVICES += hiwifi_hc5861b
 
+define Device/iptime_a3
+  MTK_SOC := mt7628an
+  IMAGE_SIZE := 7936k
+  UIMAGE_NAME := a3
+  DEVICE_VENDOR := ipTIME
+  DEVICE_MODEL := A3
+  DEVICE_PACKAGES := kmod-mt76x2
+endef
+TARGET_DEVICES += iptime_a3
+
+define Device/iptime_a604m
+  MTK_SOC := mt7628an
+  IMAGE_SIZE := 7936k
+  UIMAGE_NAME := a604m
+  DEVICE_VENDOR := ipTIME
+  DEVICE_MODEL := A604M
+  DEVICE_PACKAGES := kmod-mt76x2
+endef
+TARGET_DEVICES += iptime_a604m
+
 define Device/mediatek_linkit-smart-7688
   MTK_SOC := mt7628an
   IMAGE_SIZE := 32448k
   DEVICE_VENDOR := MediaTek
   DEVICE_MODEL := LinkIt Smart 7688
-  DEVICE_PACKAGES:= kmod-usb2 kmod-usb-ohci uboot-envtools
+  DEVICE_PACKAGES:= kmod-usb2 kmod-usb-ohci uboot-envtools kmod-sdhci-mt7620
   SUPPORTED_DEVICES += linkits7688 linkits7688d
 endef
 TARGET_DEVICES += mediatek_linkit-smart-7688
@@ -362,6 +382,7 @@ TARGET_DEVICES += tplink_tl-wr840n-v4
 define Device/tplink_tl-wr840n-v5
   MTK_SOC := mt7628an
   IMAGE_SIZE := 3904k
+  DEVICE_VENDOR := TP-Link
   DEVICE_MODEL := TL-WR840N
   DEVICE_VARIANT := v5
   TPLINK_FLASHLAYOUT := 4Mmtk
@@ -549,7 +570,7 @@ define Device/xiaomi_miwifi-nano
   IMAGE_SIZE := 16064k
   DEVICE_VENDOR := Xiaomi
   DEVICE_MODEL := MiWiFi Nano
-  DEVICE_PACKAGES := kmod-usb2 kmod-usb-ohci kmod-usb-ledtrig-usbport
+  DEVICE_PACKAGES := uboot-envtools
   SUPPORTED_DEVICES += miwifi-nano
 endef
 TARGET_DEVICES += xiaomi_miwifi-nano
@@ -557,7 +578,7 @@ TARGET_DEVICES += xiaomi_miwifi-nano
 define Device/zbtlink_zbt-we1226
   MTK_SOC := mt7628an
   IMAGE_SIZE := 7872k
-  DEVICE_VENDOR := ZBTlink
+  DEVICE_VENDOR := Zbtlink
   DEVICE_MODEL := ZBT-WE1226
 endef
 TARGET_DEVICES += zbtlink_zbt-we1226
