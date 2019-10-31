@@ -199,7 +199,7 @@ define Device/buffalo_wzr-hp-ag300h
   ATH_SOC := ar7161
   DEVICE_VENDOR := Buffalo
   DEVICE_MODEL := WZR-HP-AG300H
-  IMAGE_SIZE := 32256k
+  IMAGE_SIZE := 32320k
   IMAGES += factory.bin tftp.bin
   IMAGE/default := append-kernel | pad-to $$$$(BLOCKSIZE) | append-rootfs | pad-rootfs | check-size $$$$(IMAGE_SIZE)
   IMAGE/factory.bin := $$(IMAGE/default) | buffalo-enc WZR-HP-AG300H 1.99 | buffalo-tag WZR-HP-AG300H 3
@@ -257,6 +257,16 @@ define Device/comfast_cf-e120a-v3
   IMAGE_SIZE := 8000k
 endef
 TARGET_DEVICES += comfast_cf-e120a-v3
+
+define Device/comfast_cf-e313ac
+  ATH_SOC := qca9531
+  DEVICE_VENDOR := COMFAST
+  DEVICE_MODEL := CF-E313AC
+  DEVICE_PACKAGES := rssileds kmod-leds-gpio kmod-ath10k-ct ath10k-firmware-qca9888-ct \
+	-swconfig -uboot-envtools
+  IMAGE_SIZE := 7936k
+endef
+TARGET_DEVICES += comfast_cf-e313ac
 
 define Device/comfast_cf-e314n-v2
   ATH_SOC := qca9531
@@ -539,6 +549,7 @@ TARGET_DEVICES += glinet_gl-ar150
 
 define Device/glinet_gl-ar300m-common-nor
   ATH_SOC := qca9531
+  DEVICE_VENDOR := GL.iNet
   DEVICE_PACKAGES := kmod-usb2
   IMAGE_SIZE := 16000k
   SUPPORTED_DEVICES += gl-ar300m
@@ -546,14 +557,13 @@ endef
 
 define Device/glinet_gl-ar300m-lite
   $(Device/glinet_gl-ar300m-common-nor)
-  DEVICE_VENDOR := GL.iNet
-  DEVICE_MODEL := GL-AR300M-Lite
+  DEVICE_MODEL := GL-AR300M
+  DEVICE_VARIANT := Lite
 endef
 TARGET_DEVICES += glinet_gl-ar300m-lite
 
 define Device/glinet_gl-ar300m-nor
   $(Device/glinet_gl-ar300m-common-nor)
-  DEVICE_VENDOR := GL.iNet
   DEVICE_MODEL := GL-AR300M
 endef
 TARGET_DEVICES += glinet_gl-ar300m-nor
@@ -920,6 +930,20 @@ define Device/rosinson_wr818
   DEVICE_PACKAGES := kmod-usb2 kmod-usb-ledtrig-usbport
 endef
 TARGET_DEVICES += rosinson_wr818
+
+define Device/sitecom_wlr-7100
+  ATH_SOC := ar1022
+  DEVICE_VENDOR := Sitecom
+  DEVICE_MODEL := WLR-7100
+  DEVICE_VARIANT := v1 002
+  DEVICE_PACKAGES := ath10k-firmware-qca988x kmod-ath10k kmod-usb2
+  IMAGES += factory.dlf
+  IMAGE/factory.dlf := append-kernel | pad-to $$$$(BLOCKSIZE) | \
+	append-rootfs | pad-rootfs | check-size $$$$(IMAGE_SIZE) | \
+	senao-header -r 0x222 -p 0x53 -t 2
+  IMAGE_SIZE := 7488k
+endef
+TARGET_DEVICES += sitecom_wlr-7100
 
 define Device/trendnet_tew-823dru
   ATH_SOC := qca9558
