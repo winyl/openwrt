@@ -40,7 +40,7 @@ define Device/tplink_tl-mr3220-v1
   DEVICE_VARIANT := v1
   TPLINK_HWID := 0x32200001
   DEVICE_PACKAGES := kmod-usb2 kmod-usb-ledtrig-usbport
-  SUPPORTED_DEVICES += tl-mr3220-v1
+  SUPPORTED_DEVICES += tl-mr3220
 endef
 TARGET_DEVICES += tplink_tl-mr3220-v1
 
@@ -51,7 +51,7 @@ define Device/tplink_tl-mr3420-v1
   DEVICE_VARIANT := v1
   TPLINK_HWID := 0x34200001
   DEVICE_PACKAGES := kmod-usb2 kmod-usb-ledtrig-usbport
-  SUPPORTED_DEVICES += tl-mr3420-v1
+  SUPPORTED_DEVICES += tl-mr3420
 endef
 TARGET_DEVICES += tplink_tl-mr3420-v1
 
@@ -65,6 +65,80 @@ define Device/tplink_tl-mr3420-v2
   SUPPORTED_DEVICES += tl-mr3420-v2
 endef
 TARGET_DEVICES += tplink_tl-mr3420-v2
+
+define Device/tplink_tl-wa701nd-v1
+  $(Device/tplink-4m)
+  SOC := ar7240
+  DEVICE_MODEL := TL-WA701ND
+  DEVICE_VARIANT := v1
+  TPLINK_HWID := 0x07010001
+  SUPPORTED_DEVICES += tl-wa901nd
+endef
+TARGET_DEVICES += tplink_tl-wa701nd-v1
+
+define Device/tplink_tl-wa730re-v1
+  $(Device/tplink-4m)
+  SOC := ar7240
+  DEVICE_MODEL := TL-WA730RE
+  DEVICE_VARIANT := v1
+  TPLINK_HWID := 0x07300001
+  SUPPORTED_DEVICES += tl-wa901nd
+endef
+TARGET_DEVICES += tplink_tl-wa730re-v1
+
+define Device/tplink_tl-wa801nd-v1
+  $(Device/tplink-4m)
+  SOC := ar7240
+  DEVICE_MODEL := TL-WA801ND
+  DEVICE_VARIANT := v1
+  TPLINK_HWID := 0x08010001
+  SUPPORTED_DEVICES += tl-wa901nd
+endef
+TARGET_DEVICES += tplink_tl-wa801nd-v1
+
+define Device/tplink_tl-wa830re-v1
+  $(Device/tplink-4m)
+  SOC := ar7240
+  DEVICE_MODEL := TL-WA830RE
+  DEVICE_VARIANT := v1
+  TPLINK_HWID := 0x08300010
+  SUPPORTED_DEVICES += tl-wa901nd
+endef
+TARGET_DEVICES += tplink_tl-wa830re-v1
+
+define Device/tplink_tl-wa850re-v1
+  $(Device/tplink-4mlzma)
+  SOC := ar9341
+  DEVICE_MODEL := TL-WA850RE
+  DEVICE_VARIANT := v1
+  TPLINK_HWID := 0x08500001
+  DEVICE_PACKAGES := rssileds
+  SUPPORTED_DEVICES += tl-wa850re
+endef
+TARGET_DEVICES += tplink_tl-wa850re-v1
+
+define Device/tplink_tl-wa850re-v2
+  $(Device/tplink-safeloader)
+  SOC := qca9533
+  IMAGE_SIZE := 3648k
+  DEVICE_MODEL := TL-WA850RE
+  DEVICE_VARIANT := v2
+  TPLINK_BOARD_ID := TLWA850REV2
+  TPLINK_HWID := 0x08500002
+  DEVICE_PACKAGES := rssileds
+  SUPPORTED_DEVICES += tl-wa850re-v2
+endef
+TARGET_DEVICES += tplink_tl-wa850re-v2
+
+define Device/tplink_tl-wa901nd-v1
+  $(Device/tplink-4m)
+  SOC := ar7240
+  DEVICE_MODEL := TL-WA901ND
+  DEVICE_VARIANT := v1
+  TPLINK_HWID := 0x09010001
+  SUPPORTED_DEVICES += tl-wa901nd
+endef
+TARGET_DEVICES += tplink_tl-wa901nd-v1
 
 define Device/tplink_tl-wa901nd-v2
   $(Device/tplink-4m)
@@ -109,7 +183,6 @@ define Device/tplink_tl-wr740n-v4
   DEVICE_MODEL := TL-WR740N
   DEVICE_VARIANT := v4
   TPLINK_HWID := 0x07400004
-  SUPPORTED_DEVICES += tl-wr740n-v4
 endef
 TARGET_DEVICES += tplink_tl-wr740n-v4
 
@@ -128,7 +201,7 @@ define Device/tplink_tl-wr741nd-v4
   DEVICE_MODEL := TL-WR741N/ND
   DEVICE_VARIANT := v4
   TPLINK_HWID := 0x07410004
-  SUPPORTED_DEVICES += tl-wr741n-v4
+  SUPPORTED_DEVICES += tl-wr741nd-v4
 endef
 TARGET_DEVICES += tplink_tl-wr741nd-v4
 
@@ -156,7 +229,7 @@ define Device/tplink_tl-wr841-v7
   DEVICE_MODEL := TL-WR841N/ND
   DEVICE_VARIANT := v7
   TPLINK_HWID := 0x08410007
-  SUPPORTED_DEVICES += tl-wr841-v7
+  SUPPORTED_DEVICES += tl-wr841n-v7
 endef
 TARGET_DEVICES += tplink_tl-wr841-v7
 
@@ -198,8 +271,8 @@ define Device/tplink_tl-wr841-v11
   TPLINK_HWID := 0x08410011
   SUPPORTED_DEVICES += tl-wr841n-v11
   IMAGES += factory-us.bin factory-eu.bin
-  IMAGE/factory-us.bin := append-rootfs | mktplinkfw factory -C US
-  IMAGE/factory-eu.bin := append-rootfs | mktplinkfw factory -C EU
+  IMAGE/factory-us.bin := tplink-v1-image factory -C US
+  IMAGE/factory-eu.bin := tplink-v1-image factory -C EU
 endef
 TARGET_DEVICES += tplink_tl-wr841-v11
 
@@ -211,8 +284,8 @@ define Device/tplink_tl-wr841-v12
   TPLINK_HWID := 0x08410012
   SUPPORTED_DEVICES += tl-wr841n-v11
   IMAGES += factory-us.bin factory-eu.bin
-  IMAGE/factory-us.bin := append-rootfs | mktplinkfw factory -C US
-  IMAGE/factory-eu.bin := append-rootfs | mktplinkfw factory -C EU
+  IMAGE/factory-us.bin := tplink-v1-image factory -C US
+  IMAGE/factory-eu.bin := tplink-v1-image factory -C EU
 endef
 TARGET_DEVICES += tplink_tl-wr841-v12
 
@@ -234,11 +307,25 @@ define Device/tplink_tl-wr940n-v4
   TPLINK_HWID := 0x09400004
   SUPPORTED_DEVICES += tl-wr940n-v4
   IMAGES += factory-us.bin factory-eu.bin factory-br.bin
-  IMAGE/factory-us.bin := append-rootfs | mktplinkfw factory -C US
-  IMAGE/factory-eu.bin := append-rootfs | mktplinkfw factory -C EU
-  IMAGE/factory-br.bin := append-rootfs | mktplinkfw factory -C BR
+  IMAGE/factory-us.bin := tplink-v1-image factory -C US
+  IMAGE/factory-eu.bin := tplink-v1-image factory -C EU
+  IMAGE/factory-br.bin := tplink-v1-image factory -C BR
 endef
 TARGET_DEVICES += tplink_tl-wr940n-v4
+
+define Device/tplink_tl-wr940n-v6
+  $(Device/tplink-4mlzma)
+  SOC := tp9343
+  DEVICE_MODEL := TL-WR940N
+  DEVICE_VARIANT := v6
+  TPLINK_HWID := 0x09400006
+  SUPPORTED_DEVICES += tl-wr940n-v6
+  IMAGES += factory-us.bin factory-eu.bin factory-br.bin
+  IMAGE/factory-us.bin := tplink-v1-image factory -C US
+  IMAGE/factory-eu.bin := tplink-v1-image factory -C EU
+  IMAGE/factory-br.bin := tplink-v1-image factory -C BR
+endef
+TARGET_DEVICES += tplink_tl-wr940n-v6
 
 define Device/tplink_tl-wr941-v2
   $(Device/tplink-4m)
