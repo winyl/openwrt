@@ -7,12 +7,13 @@
 
 menu "Global build settings"
 
-	config JSON_ADD_IMAGE_INFO
-		bool "Create JSON info files per build image"
+	config JSON_OVERVIEW_IMAGE_INFO
+		bool "Create JSON info file overview per target"
 		default BUILDBOT
 		help
-		  The JSON info files contain information about the device and
-		  build images, stored next to the firmware images.
+		  Create a JSON info file called profiles.json in the target
+		  directory containing machine readable list of built profiles
+		  and resulting images.
 
 	config ALL_NONSHARED
 		bool "Select all target specific packages by default"
@@ -100,7 +101,7 @@ menu "Global build settings"
 		bool "Include build configuration in firmware" if DEVEL
 		default n
 		help
-		  If enabled, config.buildinfo will be stored in /etc/build.config of firmware.
+		  If enabled, buildinfo files will be stored in /etc/build.* of firmware.
 
 	config COLLECT_KERNEL_DEBUG
 		bool

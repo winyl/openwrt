@@ -107,6 +107,22 @@ endef
 
 $(eval $(call KernelPackage,libphy))
 
+
+define KernelPackage/phylink
+  SUBMENU:=$(NETWORK_DEVICES_MENU)
+  TITLE:=Model for MAC to optional PHY connection
+  KCONFIG:=CONFIG_PHYLINK
+  FILES:=$(LINUX_DIR)/drivers/net/phy/phylink.ko
+  AUTOLOAD:=$(call AutoLoad,15,phylink,1)
+endef
+
+define KernelPackage/phylink/description
+ Model for MAC to optional PHY connection
+endef
+
+$(eval $(call KernelPackage,phylink))
+
+
 define KernelPackage/mii
   SUBMENU:=$(NETWORK_DEVICES_MENU)
   TITLE:=MII library
@@ -323,7 +339,7 @@ define KernelPackage/switch-rtl8366-smi
   DEPENDS:=@GPIO_SUPPORT +kmod-swconfig +(TARGET_armvirt||TARGET_bcm27xx_bcm2708||TARGET_samsung||TARGET_tegra):kmod-of-mdio
   KCONFIG:=CONFIG_RTL8366_SMI
   FILES:=$(LINUX_DIR)/drivers/net/phy/rtl8366_smi.ko
-  AUTOLOAD:=$(call AutoLoad,42,rtl8366_smi)
+  AUTOLOAD:=$(call AutoLoad,42,rtl8366_smi,1)
 endef
 
 define KernelPackage/switch-rtl8366-smi/description
@@ -371,7 +387,7 @@ define KernelPackage/switch-rtl8367b
   DEPENDS:=+kmod-switch-rtl8366-smi
   KCONFIG:=CONFIG_RTL8367B_PHY
   FILES:=$(LINUX_DIR)/drivers/net/phy/rtl8367b.ko
-  AUTOLOAD:=$(call AutoLoad,43,rtl8367b)
+  AUTOLOAD:=$(call AutoLoad,43,rtl8367b,1)
 endef
 
 define KernelPackage/switch-rtl8367b/description
@@ -666,7 +682,7 @@ $(eval $(call KernelPackage,igbvf))
 define KernelPackage/ixgbe
   SUBMENU:=$(NETWORK_DEVICES_MENU)
   TITLE:=Intel(R) 82598/82599 PCI-Express 10 Gigabit Ethernet support
-  DEPENDS:=@PCI_SUPPORT +kmod-mdio +kmod-ptp +kmod-hwmon-core
+  DEPENDS:=@PCI_SUPPORT +kmod-mdio +kmod-ptp +kmod-hwmon-core +LINUX_5_4:kmod-libphy
   KCONFIG:=CONFIG_IXGBE \
     CONFIG_IXGBE_VXLAN=n \
     CONFIG_IXGBE_HWMON=y \
@@ -699,6 +715,48 @@ define KernelPackage/ixgbevf/description
 endef
 
 $(eval $(call KernelPackage,ixgbevf))
+
+
+define KernelPackage/i40e
+  SUBMENU:=$(NETWORK_DEVICES_MENU)
+  TITLE:=Intel(R) Ethernet Controller XL710 Family support
+  DEPENDS:=@PCI_SUPPORT +kmod-mdio +kmod-ptp +kmod-hwmon-core +LINUX_5_4:kmod-libphy
+  KCONFIG:=CONFIG_I40E \
+    CONFIG_I40E_VXLAN=n \
+    CONFIG_I40E_HWMON=y \
+    CONFIG_I40E_DCA=n
+  FILES:=$(LINUX_DIR)/drivers/net/ethernet/intel/i40e/i40e.ko
+  AUTOLOAD:=$(call AutoProbe,i40e)
+endef
+
+define KernelPackage/i40e/description
+ Kernel modules for Intel(R) Ethernet Controller XL710 Family 40 Gigabit Ethernet adapters.
+endef
+
+$(eval $(call KernelPackage,i40e))
+
+
+define KernelPackage/iavf
+  SUBMENU:=$(NETWORK_DEVICES_MENU)
+  TITLE:=Intel(R) Ethernet Adaptive Virtual Function support
+  DEPENDS:=@PCI_SUPPORT
+  KCONFIG:= \
+       CONFIG_I40EVF \
+       CONFIG_IAVF
+  FILES:= \
+       $(LINUX_DIR)/drivers/net/ethernet/intel/i40evf/i40evf.ko@lt4.20 \
+       $(LINUX_DIR)/drivers/net/ethernet/intel/iavf/iavf.ko@ge4.20
+  AUTOLOAD:=$(call AutoProbe,i40evf iavf)
+  AUTOLOAD:=$(call AutoProbe,iavf)
+endef
+
+define KernelPackage/iavf/description
+ Kernel modules for Intel XL710,
+	  X710, X722, XXV710, and all devices advertising support for
+	  Intel Ethernet Adaptive Virtual Function devices.
+endef
+
+$(eval $(call KernelPackage,iavf))
 
 
 define KernelPackage/b44
@@ -809,7 +867,7 @@ $(eval $(call KernelPackage,hfcmulti))
 define KernelPackage/gigaset
   SUBMENU:=$(NETWORK_DEVICES_MENU)
   TITLE:=Siemens Gigaset support for isdn4linux
-  DEPENDS:=@USB_SUPPORT +kmod-isdn4linux +kmod-lib-crc-ccitt +kmod-usb-core
+  DEPENDS:=@USB_SUPPORT +kmod-isdn4linux +kmod-lib-crc-ccitt +kmod-usb-core @!LINUX_5_4
   URL:=http://gigaset307x.sourceforge.net/
   KCONFIG:= \
     CONFIG_ISDN_DRV_GIGASET \
@@ -927,6 +985,7 @@ define KernelPackage/ifb
 	CONFIG_NET_CLS=y
   FILES:=$(LINUX_DIR)/drivers/net/ifb.ko
   AUTOLOAD:=$(call AutoLoad,34,ifb)
+  MODPARAMS.ifb:=numifbs=0
 endef
 
 define KernelPackage/ifb/description
@@ -1089,3 +1148,74 @@ define KernelPackage/be2net/description
 endef
 
 $(eval $(call KernelPackage,be2net))
+
+define KernelPackage/mlx4-core
+  SUBMENU:=$(NETWORK_DEVICES_MENU)
+  TITLE:=Mellanox ConnectX(R) mlx4 core Network Driver
+  DEPENDS:=@PCI_SUPPORT +kmod-ptp
+  FILES:= \
+	$(LINUX_DIR)/drivers/net/ethernet/mellanox/mlx4/mlx4_core.ko \
+	$(LINUX_DIR)/drivers/net/ethernet/mellanox/mlx4/mlx4_en.ko
+  KCONFIG:= CONFIG_MLX4_EN \
+	CONFIG_MLX4_EN_DCB=n \
+	CONFIG_MLX4_CORE=y \
+	CONFIG_MLX4_CORE_GEN2=y \
+	CONFIG_MLX4_DEBUG=n
+  AUTOLOAD:=$(call AutoProbe,mlx4_core mlx4_en)
+endef
+
+define KernelPackage/mlx4-core/description
+  Supports Mellanox ConnectX-3 series and previous cards
+endef
+
+$(eval $(call KernelPackage,mlx4-core))
+
+define KernelPackage/mlx5-core
+  SUBMENU:=$(NETWORK_DEVICES_MENU)
+  TITLE:=Mellanox ConnectX(R) mlx5 core Network Driver
+  DEPENDS:=@PCI_SUPPORT +kmod-ptp
+  FILES:=$(LINUX_DIR)/drivers/net/ethernet/mellanox/mlx5/core/mlx5_core.ko
+  KCONFIG:= CONFIG_MLX5_CORE \
+	CONFIG_MLX5_CORE_EN=y \
+	CONFIG_MLX5_CORE_EN_DCB=n \
+	CONFIG_MLX5_CORE_IPOIB=n \
+	CONFIG_MLX5_EN_ARFS=n \
+	CONFIG_MLX5_EN_IPSEC=n \
+	CONFIG_MLX5_EN_RXNFC=y \
+	CONFIG_MLX5_EN_TLS=n \
+	CONFIG_MLX5_ESWITCH=n \
+	CONFIG_MLX5_FPGA=n \
+	CONFIG_MLX5_FPGA_IPSEC=n \
+	CONFIG_MLX5_FPGA_TLS=n \
+	CONFIG_MLX5_MPFS=y \
+	CONFIG_MLX5_SW_STEERING=n \
+	CONFIG_MLX5_TC_CT=n \
+	CONFIG_MLX5_TLS=n
+  AUTOLOAD:=$(call AutoProbe,mlx5_core)
+endef
+
+define KernelPackage/mlx5-core/description
+  Supports Mellanox Connect-IB/ConnectX-4 series and later cards
+endef
+
+$(eval $(call KernelPackage,mlx5-core))
+
+
+define KernelPackage/sfp
+  SUBMENU:=$(NETWORK_DEVICES_MENU)
+  TITLE:=SFP cage support
+  DEPENDS:=+kmod-i2c-core +kmod-hwmon-core +kmod-phylink
+  KCONFIG:= \
+	CONFIG_SFP \
+	CONFIG_MDIO_I2C
+  FILES:= \
+	$(LINUX_DIR)/drivers/net/phy/sfp.ko \
+	$(LINUX_DIR)/drivers/net/phy/mdio-i2c.ko
+  AUTOLOAD:=$(call AutoProbe,mdio-i2c sfp)
+endef
+
+define KernelPackage/sfp/description
+ Kernel module to support SFP cages
+endef
+
+$(eval $(call KernelPackage,sfp))

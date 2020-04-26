@@ -3,6 +3,12 @@
 # BCM33XX/BCM63XX Profiles
 #
 
+DEVICE_VARS += HCS_MAGIC_BYTES HCS_REV_MIN HCS_REV_MAJ
+DEVICE_VARS += BLOCK_SIZE FLASH_MB IMAGE_OFFSET
+DEVICE_VARS += CFE_BOARD_ID CFE_CHIP_ID CFE_EXTRAS
+DEVICE_VARS += NETGEAR_BOARD_ID NETGEAR_REGION
+DEVICE_VARS += REDBOOT_PREFIX
+
 define Device/bcm33xx
   KERNEL_INITRAMFS := kernel-bin | append-dtb | lzma | loader-lzma bin | hcs-initramfs
   IMAGES :=
@@ -10,7 +16,6 @@ define Device/bcm33xx
   HCS_REV_MIN :=
   HCS_REV_MAJ :=
 endef
-DEVICE_VARS += HCS_MAGIC_BYTES HCS_REV_MIN HCS_REV_MAJ
 
 define Device/bcm63xx
   FILESYSTEMS := squashfs jffs2-64k jffs2-128k
@@ -31,8 +36,6 @@ define Device/bcm63xx
   CFE_CHIP_ID :=
   CFE_EXTRAS = --block-size $$(BLOCK_SIZE) --image-offset $$(if $$(IMAGE_OFFSET),$$(IMAGE_OFFSET),$$(BLOCK_SIZE))
 endef
-DEVICE_VARS += BLOCK_SIZE FLASH_MB IMAGE_OFFSET
-DEVICE_VARS += CFE_BOARD_ID CFE_CHIP_ID CFE_EXTRAS
 
 define Device/bcm63xx_netgear
   $(Device/bcm63xx)
@@ -42,7 +45,6 @@ define Device/bcm63xx_netgear
   NETGEAR_BOARD_ID :=
   NETGEAR_REGION :=
 endef
-DEVICE_VARS += NETGEAR_BOARD_ID NETGEAR_REGION
 
 define Device/bcm63xx_redboot
   FILESYSTEMS := squashfs
@@ -52,7 +54,6 @@ define Device/bcm63xx_redboot
   IMAGE/redboot.bin := redboot-bin
   REDBOOT_PREFIX := $$(IMAGE_PREFIX)
 endef
-DEVICE_VARS += REDBOOT_PREFIX
 
 ### Generic ###
 define Device/brcm_bcm963281tan
@@ -90,6 +91,7 @@ define Device/brcm_bcm96338w
   DEVICE_MODEL := 96338W
   CFE_BOARD_ID := 6338W
   CFE_CHIP_ID := 6338
+  DEFAULT := n
 endef
 TARGET_DEVICES += brcm_bcm96338w
 
@@ -111,6 +113,7 @@ define Device/brcm_bcm96348gw
   IMAGES += cfe-bc221.bin
   CFE_BOARD_ID := 96348GW
   CFE_CHIP_ID := 6348
+  DEFAULT := n
 endef
 TARGET_DEVICES += brcm_bcm96348gw
 
@@ -120,6 +123,7 @@ define Device/brcm_bcm96348gw-10
   DEVICE_MODEL := 96348GW-10
   CFE_BOARD_ID := 96348GW-10
   CFE_CHIP_ID := 6348
+  DEFAULT := n
 endef
 TARGET_DEVICES += brcm_bcm96348gw-10
 
@@ -129,6 +133,7 @@ define Device/brcm_bcm96348gw-11
   DEVICE_MODEL := 96348GW-11
   CFE_BOARD_ID := 96348GW-11
   CFE_CHIP_ID := 6348
+  DEFAULT := n
 endef
 TARGET_DEVICES += brcm_bcm96348gw-11
 
@@ -138,6 +143,7 @@ define Device/brcm_bcm96348r
   DEVICE_MODEL := 96348R
   CFE_BOARD_ID := 96348R
   CFE_CHIP_ID := 6348
+  DEFAULT := n
 endef
 TARGET_DEVICES += brcm_bcm96348r
 
@@ -512,6 +518,7 @@ define Device/d-link_dsl-274xb-c2
   CFE_BOARD_ID := 96358GW
   CFE_CHIP_ID := 6358
   DEVICE_PACKAGES := $(B43_PACKAGES)
+  DEFAULT := n
 endef
 TARGET_DEVICES += d-link_dsl-274xb-c2
 
@@ -527,6 +534,7 @@ define Device/d-link_dsl-274xb-c3
   CFE_BOARD_ID := AW4139
   CFE_CHIP_ID := 6358
   DEVICE_PACKAGES := $(B43_PACKAGES)
+  DEFAULT := n
 endef
 TARGET_DEVICES += d-link_dsl-274xb-c3
 
@@ -647,6 +655,7 @@ define Device/huawei_echolife-hg520v
   CFE_EXTRAS += --rsa-signature "EchoLife_HG520v"
   SOC := bcm6359
   DEVICE_PACKAGES := $(B43_PACKAGES)
+  DEFAULT := n
 endef
 TARGET_DEVICES += huawei_echolife-hg520v
 
@@ -1056,6 +1065,7 @@ define Device/tecom_gw6000
   CFE_BOARD_ID := 96348GW
   CFE_CHIP_ID := 6348
   DEVICE_PACKAGES := $(BRCMWL_PACKAGES) $(USB1_PACKAGES)
+  DEFAULT := n
 endef
 TARGET_DEVICES += tecom_gw6000
 
@@ -1067,6 +1077,7 @@ define Device/tecom_gw6200
   CFE_CHIP_ID := 6348
   CFE_EXTRAS += --rsa-signature "$(shell printf '\x99')"
   DEVICE_PACKAGES := $(BRCMWL_PACKAGES) $(USB1_PACKAGES)
+  DEFAULT := n
 endef
 TARGET_DEVICES += tecom_gw6200
 
@@ -1147,5 +1158,6 @@ define Device/zyxel_p870hw-51a-v2
   CFE_CHIP_ID := 6368
   CFE_EXTRAS += --rsa-signature "ZyXEL" --signature "ZyXEL_0001"
   DEVICE_PACKAGES := $(B43_PACKAGES)
+  DEFAULT := n
 endef
 TARGET_DEVICES += zyxel_p870hw-51a-v2

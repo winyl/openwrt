@@ -1,8 +1,9 @@
 include $(TOPDIR)/rules.mk
 include $(INCLUDE_DIR)/image.mk
 
-DEVICE_VARS += RAS_BOARD RAS_ROOTFS_SIZE RAS_VERSION \
-	       WRGG_DEVNAME WRGG_SIGNATURE
+DEVICE_VARS += NETGEAR_BOARD_ID NETGEAR_HW_ID
+DEVICE_VARS += RAS_BOARD RAS_ROOTFS_SIZE RAS_VERSION
+DEVICE_VARS += WRGG_DEVNAME WRGG_SIGNATURE
 
 define Device/Default
 	PROFILES := Default
@@ -51,7 +52,39 @@ define Device/DniImage
 	IMAGE/factory.img := append-kernel | pad-offset 64k 64 | append-uImage-fakehdr filesystem | append-rootfs | pad-rootfs | netgear-dni
 	IMAGE/sysupgrade.bin := append-kernel | pad-offset 64k 64 | append-uImage-fakehdr filesystem | append-rootfs | pad-rootfs | append-metadata
 endef
-DEVICE_VARS += NETGEAR_BOARD_ID NETGEAR_HW_ID
+
+define Build/append-rootfshdr
+	mkimage -A $(LINUX_KARCH) \
+		-O linux -T filesystem \
+		-C lzma -a $(KERNEL_LOADADDR) -e $(if $(KERNEL_ENTRY),$(KERNEL_ENTRY),$(KERNEL_LOADADDR)) \
+		-n root.squashfs -d $(IMAGE_ROOTFS) $@.new
+	dd if=$@.new bs=64 count=1 >> $(IMAGE_KERNEL)
+endef
+
+define Build/mkmylofw_32m
+	$(eval device_id=$(word 1,$(1)))
+	$(eval revision=$(word 2,$(1)))
+
+	let \
+		size="$$(stat -c%s $@)" \
+		pad="$(subst k,* 1024,$(BLOCKSIZE))" \
+		pad="(pad - (size % pad)) % pad" \
+		newsize='size + pad'; \
+		$(STAGING_DIR_HOST)/bin/mkmylofw \
+		-B WPE72 -i 0x11f6:$(device_id):0x11f6:$(device_id) -r $(revision) \
+		-s 0x2000000 -p0x180000:$$newsize:al:0x80208000:"OpenWrt":$@ \
+		$@.new
+	@mv $@.new $@
+endef
+
+define Build/qsdk-ipq-factory-nand-askey
+	$(TOPDIR)/scripts/mkits-qsdk-ipq-image.sh $@.its\
+		askey_kernel $(IMAGE_KERNEL) \
+		askey_fs $(IMAGE_ROOTFS) \
+		ubifs $@
+	PATH=$(LINUX_DIR)/scripts/dtc:$(PATH) mkimage -f $@.its $@.new
+	@mv $@.new $@
+endef
 
 define Build/SenaoFW
 	-$(STAGING_DIR_HOST)/bin/mksenaofw \
@@ -70,6 +103,18 @@ define Build/wrgg-image
 	-v "" -m "" -B ""
 	mv $@.new $@
 endef
+
+define Device/8dev_habanero-dvk
+	$(call Device/FitImageLzma)
+	DEVICE_VENDOR := 8devices
+	DEVICE_MODEL := Habanero DVK
+	IMAGE_SIZE := 30976k
+	SOC := qcom-ipq4019
+	DEVICE_PACKAGES := ipq-wifi-8dev_habanero-dvk
+	IMAGES := sysupgrade.bin
+	IMAGE/sysupgrade.bin := append-kernel | pad-to 64k | append-rootfs | pad-rootfs | append-metadata | check-size
+endef
+TARGET_DEVICES += 8dev_habanero-dvk
 
 define Device/8dev_jalapeno-common
 	$(call Device/FitImage)
@@ -200,6 +245,28 @@ define Device/avm_fritzrepeater-3000
 endef
 TARGET_DEVICES += avm_fritzrepeater-3000
 
+define Device/cellc_rtl30vw
+	KERNEL_SUFFIX := -fit-uImage.itb
+	KERNEL_INITRAMFS = kernel-bin | gzip | fit gzip $$(DTS_DIR)/$$(DEVICE_DTS).dtb
+	KERNEL = kernel-bin | gzip | fit gzip $$(DTS_DIR)/$$(DEVICE_DTS).dtb | uImage lzma | pad-to 2048
+	KERNEL_NAME := Image
+	KERNEL_IN_UBI :=
+	IMAGES := nand-factory.bin nand-sysupgrade.bin
+	IMAGE/nand-factory.bin := append-rootfshdr | append-ubi | qsdk-ipq-factory-nand-askey
+	IMAGE/nand-sysupgrade.bin := append-rootfshdr | sysupgrade-tar | append-metadata
+	DEVICE_VENDOR := Cell C
+	DEVICE_MODEL := RTL30VW
+	SOC := qcom-ipq4019
+	DEVICE_DTS_CONFIG := config@5
+	KERNEL_INSTALL := 1
+	KERNEL_SIZE := 4096k
+	IMAGE_SIZE := 57344k
+	BLOCKSIZE := 128k
+	PAGESIZE := 2048
+	DEVICE_PACKAGES := kmod-usb-net-qmi-wwan kmod-usb-serial-option uqmi ipq-wifi-cellc_rtl30vw
+endef
+TARGET_DEVICES += cellc_rtl30vw
+
 define Device/cilab_meshpoint-one
 	$(call Device/8dev_jalapeno-common)
 	DEVICE_VENDOR := Crisis Innovation Lab
@@ -231,8 +298,9 @@ define Device/compex_wpj428
 	BLOCKSIZE := 64k
 	IMAGE_SIZE := 31232k
 	KERNEL_SIZE := 4096k
-	IMAGES = sysupgrade.bin
+	IMAGES = sysupgrade.bin cpximg-6a04.bin
 	IMAGE/sysupgrade.bin := append-kernel | append-rootfs | pad-rootfs | append-metadata
+	IMAGE/cpximg-6a04.bin := append-kernel | append-rootfs | pad-rootfs | mkmylofw_32m 0x8A2 3
 	DEVICE_PACKAGES := kmod-gpio-beeper
 endef
 TARGET_DEVICES += compex_wpj428
@@ -258,8 +326,8 @@ define Device/dlink_dap-2610
 	# the sysupgrade image only the kernel is included in the wrgg checksum,
 	# but this is not flashable from the D-link http server.
 	# append-rootfs must start on an erase block boundary.
-	IMAGE/factory.bin    := append-kernel | pad-offset 6144k 160 | append-rootfs | wrgg-image | check-size $$$$(IMAGE_SIZE)
-	IMAGE/sysupgrade.bin := append-kernel | wrgg-image | pad-to $$$$(BLOCKSIZE) | append-rootfs | pad-rootfs | check-size $$$$(IMAGE_SIZE) | append-metadata
+	IMAGE/factory.bin    := append-kernel | pad-offset 6144k 160 | append-rootfs | wrgg-image | check-size
+	IMAGE/sysupgrade.bin := append-kernel | wrgg-image | pad-to $$$$(BLOCKSIZE) | append-rootfs | pad-rootfs | check-size | append-metadata
 	DEVICE_PACKAGES := ipq-wifi-dlink_dap2610
 endef
 TARGET_DEVICES += dlink_dap-2610
@@ -278,6 +346,18 @@ define Device/engenius_eap1300
 endef
 TARGET_DEVICES += engenius_eap1300
 
+define Device/engenius_eap2200
+	$(call Device/FitImage)
+	$(call Device/UbiFit)
+	DEVICE_VENDOR := EnGenius
+	DEVICE_MODEL := EAP2200
+	SOC := qcom-ipq4019
+	BLOCKSIZE := 128k
+	PAGESIZE := 2048
+	DEVICE_PACKAGES := ath10k-firmware-qca9888-ct ipq-wifi-engenius_eap2200 -kmod-ath10k-ct kmod-ath10k-ct-smallbuffers
+endef
+TARGET_DEVICES += engenius_eap2200
+
 define Device/engenius_emd1
 	$(call Device/FitImage)
 	DEVICE_VENDOR := EnGenius
@@ -287,7 +367,7 @@ define Device/engenius_emd1
 	IMAGE_SIZE := 30720k
 	IMAGES := sysupgrade.bin factory.bin
 	IMAGE/sysupgrade.bin := append-kernel | append-rootfs | pad-rootfs | append-metadata
-	IMAGE/factory.bin := qsdk-ipq-factory-nor | check-size $$$$(IMAGE_SIZE)
+	IMAGE/factory.bin := qsdk-ipq-factory-nor | check-size
 endef
 TARGET_DEVICES += engenius_emd1
 
@@ -311,9 +391,9 @@ define Device/engenius_ens620ext
 	KERNEL_SIZE := 5120k
 	FILESYSTEMS := squashfs
 	IMAGES := sysupgrade.bin factory_30.bin factory_35.bin
-	IMAGE/sysupgrade.bin := append-kernel | append-rootfs | pad-rootfs | check-size $$$$(IMAGE_SIZE) | append-metadata
-	IMAGE/factory_30.bin := append-kernel | pad-to $$$$(KERNEL_SIZE) | append-rootfs | pad-rootfs | check-size $$$$(IMAGE_SIZE) | SenaoFW $$$$(PRODUCT_ID) $$$$(FW_VER)
-	IMAGE/factory_35.bin := qsdk-ipq-factory-nor | check-size $$$$(IMAGE_SIZE) | SenaoFW $$$$(PRODUCT_ID_NEW) $$$$(FW_VER_NEW)
+	IMAGE/sysupgrade.bin := append-kernel | append-rootfs | pad-rootfs | check-size | append-metadata
+	IMAGE/factory_30.bin := append-kernel | pad-to $$$$(KERNEL_SIZE) | append-rootfs | pad-rootfs | check-size | SenaoFW $$$$(PRODUCT_ID) $$$$(FW_VER)
+	IMAGE/factory_35.bin := qsdk-ipq-factory-nor | check-size | SenaoFW $$$$(PRODUCT_ID_NEW) $$$$(FW_VER_NEW)
 endef
 TARGET_DEVICES += engenius_ens620ext
 
@@ -378,7 +458,7 @@ define Device/linksys_ea6350v3
 	IMAGE_SIZE := 37888k
 	UBINIZE_OPTS := -E 5
 	IMAGES := factory.bin sysupgrade.bin
-	IMAGE/factory.bin := append-kernel | append-uImage-fakehdr filesystem | pad-to $$$${KERNEL_SIZE} | append-ubi | linksys-image type=EA6350v3
+	IMAGE/factory.bin := append-kernel | append-uImage-fakehdr filesystem | pad-to $$$$(KERNEL_SIZE) | append-ubi | linksys-image type=EA6350v3
 	DEVICE_PACKAGES := uboot-envtools
 endef
 TARGET_DEVICES += linksys_ea6350v3
@@ -394,7 +474,7 @@ define Device/linksys_ea8300
 	PAGESIZE := 2048
 	UBINIZE_OPTS := -E 5    # EOD marks to "hide" factory sig at EOF
 	IMAGES := sysupgrade.bin factory.bin
-	IMAGE/factory.bin  := append-kernel | pad-to $$$${KERNEL_SIZE} | append-ubi | linksys-image type=EA8300
+	IMAGE/factory.bin  := append-kernel | pad-to $$$$(KERNEL_SIZE) | append-ubi | linksys-image type=EA8300
 	DEVICE_PACKAGES := uboot-envtools ath10k-firmware-qca9888-ct ipq-wifi-linksys_ea8300 kmod-usb-ledtrig-usbport
 endef
 TARGET_DEVICES += linksys_ea8300
@@ -410,6 +490,18 @@ define Device/meraki_mr33
 	DEVICE_PACKAGES := -swconfig ath10k-firmware-qca9887-ct
 endef
 TARGET_DEVICES += meraki_mr33
+
+define Device/mobipromo_cm520-79f
+	$(call Device/FitzImage)
+	$(call Device/UbiFit)
+	DEVICE_VENDOR := MobiPromo
+	DEVICE_MODEL := CM520-79F
+	SOC := qcom-ipq4019
+	BLOCKSIZE := 128k
+	PAGESIZE := 2048
+	DEVICE_PACKAGES := ipq-wifi-mobipromo_cm520-79f kmod-usb-ledtrig-usbport
+endef
+TARGET_DEVICES += mobipromo_cm520-79f
 
 define Device/netgear_ex61x0v2
 	$(call Device/DniImage)
@@ -480,7 +572,7 @@ define Device/qcom_ap-dk01.1-c1
 	IMAGE_SIZE := 26624k
 	$(call Device/FitImage)
 	IMAGES := sysupgrade.bin
-	IMAGE/sysupgrade.bin := append-kernel | pad-to $$$${KERNEL_SIZE} | append-rootfs | pad-rootfs | append-metadata
+	IMAGE/sysupgrade.bin := append-kernel | pad-to $$$$(KERNEL_SIZE) | append-rootfs | pad-rootfs | append-metadata
 endef
 TARGET_DEVICES += qcom_ap-dk01.1-c1
 

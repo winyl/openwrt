@@ -7,7 +7,8 @@
 include $(TOPDIR)/rules.mk
 include $(INCLUDE_DIR)/image.mk
 
-DEVICE_VARS += IMAGE_SIZE NETGEAR_BOARD_ID NETGEAR_HW_ID
+DEVICE_VARS += LOADER_TYPE
+DEVICE_VARS += NETGEAR_BOARD_ID NETGEAR_HW_ID
 DEVICE_VARS += BUFFALO_TAG_PLATFORM BUFFALO_TAG_VERSION BUFFALO_TAG_MINOR
 DEVICE_VARS += SEAMA_SIGNATURE SEAMA_MTDBLOCK
 DEVICE_VARS += SERCOMM_HWID SERCOMM_HWVER SERCOMM_SWVER
@@ -17,7 +18,11 @@ loadaddr-y := 0x80000000
 loadaddr-$(CONFIG_TARGET_ramips_rt288x) := 0x88000000
 loadaddr-$(CONFIG_TARGET_ramips_mt7621) := 0x80001000
 
+ldrplatform-y := ralink
+ldrplatform-$(CONFIG_TARGET_ramips_mt7621) := mt7621
+
 KERNEL_LOADADDR := $(loadaddr-y)
+LOADER_PLATFORM := $(ldrplatform-y)
 
 KERNEL_DTB = kernel-bin | append-dtb | lzma
 define Device/Default
@@ -29,7 +34,12 @@ define Device/Default
   IMAGES := sysupgrade.bin
   SUPPORTED_DEVICES := $(subst _,$(comma),$(1))
   sysupgrade_bin := append-kernel | append-rootfs | pad-rootfs
-  IMAGE/sysupgrade.bin := append-kernel | append-rootfs | pad-rootfs | append-metadata | check-size $$$$(IMAGE_SIZE)
+  IMAGE/sysupgrade.bin := append-kernel | append-rootfs | pad-rootfs | append-metadata | check-size
+endef
+
+define Device/uimage-lzma-loader
+  LOADER_TYPE := bin
+  KERNEL := kernel-bin | append-dtb | lzma | loader-kernel | uImage none
 endef
 
 define Device/seama
@@ -41,9 +51,9 @@ define Device/seama
   # - 36 bytes of META data (4-bytes aligned)
   IMAGE/default := append-kernel | pad-offset $$$$(BLOCKSIZE) 64 | append-rootfs
   IMAGE/sysupgrade.bin := \
-	$$(IMAGE/default) | seama | pad-rootfs | append-metadata | check-size $$$$(IMAGE_SIZE)
+	$$(IMAGE/default) | seama | pad-rootfs | append-metadata | check-size
   IMAGE/factory.bin := \
-	$$(IMAGE/default) | pad-rootfs -x 64 | seama | seama-seal | check-size $$$$(IMAGE_SIZE)
+	$$(IMAGE/default) | pad-rootfs -x 64 | seama | seama-seal | check-size
   SEAMA_SIGNATURE :=
 endef
 
@@ -67,7 +77,7 @@ define Build/loader-common
 	$(MAKE) -C lzma-loader \
 		PKG_BUILD_DIR="$@.src" \
 		TARGET_DIR="$(dir $@)" LOADER_NAME="$(notdir $@)" \
-		BOARD="$(BOARDNAME)" PLATFORM="$(PLATFORM)" \
+		BOARD="$(BOARDNAME)" PLATFORM="$(LOADER_PLATFORM)" \
 		LZMA_TEXT_START=0x82000000 LOADADDR=$(KERNEL_LOADADDR) \
 		$(1) compile loader.$(LOADER_TYPE)
 	mv "$@.$(LOADER_TYPE)" "$@"

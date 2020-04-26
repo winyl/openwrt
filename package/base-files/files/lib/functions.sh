@@ -254,7 +254,6 @@ default_postinst() {
 		fi
 
 		if grep -m1 -q -s "^/etc/uci-defaults/" "$filelist"; then
-			. /lib/functions/system.sh
 			[ -d /tmp/.uci ] || mkdir -p /tmp/.uci
 			for i in $(grep -s "^/etc/uci-defaults/" "$filelist"); do
 				( [ -f "$i" ] && cd "$(dirname $i)" && . "$i" ) && rm -f "$i"
@@ -327,7 +326,7 @@ group_add_next() {
 	gids=$(cut -d: -f3 ${IPKG_INSTROOT}/etc/group)
 	gid=65536
 	while echo "$gids" | grep -q "^$gid$"; do
-	        gid=$((gid + 1))
+		gid=$((gid + 1))
 	done
 	group_add $1 $gid
 	echo $gid
@@ -355,7 +354,7 @@ user_add() {
 		uids=$(cut -d: -f3 ${IPKG_INSTROOT}/etc/passwd)
 		uid=65536
 		while echo "$uids" | grep -q "^$uid$"; do
-		        uid=$((uid + 1))
+			uid=$((uid + 1))
 		done
 	}
 	[ -z "$gid" ] && gid=$uid
