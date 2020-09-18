@@ -1,12 +1,13 @@
 PKG_DRIVERS += \
 	ath ath5k ath6kl ath6kl-sdio ath6kl-usb ath9k ath9k-common ath9k-htc ath10k \
-	carl9170 owl-loader
+	carl9170 owl-loader ar5523
 
 PKG_CONFIG_DEPENDS += \
 	CONFIG_PACKAGE_ATH_DEBUG \
 	CONFIG_PACKAGE_ATH_DFS \
 	CONFIG_PACKAGE_ATH_SPECTRAL \
 	CONFIG_PACKAGE_ATH_DYNACK \
+	CONFIG_ATH9K_HWRNG \
 	CONFIG_ATH9K_SUPPORT_PCOEM \
 	CONFIG_ATH9K_TX99 \
 	CONFIG_ATH10K_LEDS \
@@ -44,6 +45,7 @@ config-$(CONFIG_TARGET_ath79) += ATH9K_AHB
 config-$(CONFIG_TARGET_ipq40xx) += ATH10K_AHB
 config-$(CONFIG_PCI) += ATH9K_PCI
 config-$(CONFIG_ATH_USER_REGD) += ATH_USER_REGD
+config-$(CONFIG_ATH9K_HWRNG) += ATH9K_HWRNG
 config-$(CONFIG_ATH9K_SUPPORT_PCOEM) += ATH9K_PCOEM
 config-$(CONFIG_ATH9K_TX99) += ATH9K_TX99
 config-$(CONFIG_ATH9K_UBNTHSR) += ATH9K_UBNTHSR
@@ -65,6 +67,7 @@ config-$(call config_package,ath6kl-sdio) += ATH6KL_SDIO
 config-$(call config_package,ath6kl-usb) += ATH6KL_USB
 
 config-$(call config_package,carl9170) += CARL9170
+config-$(call config_package,ar5523) += AR5523
 
 define KernelPackage/ath/config
   if PACKAGE_kmod-ath
@@ -207,6 +210,12 @@ endef
 
 define KernelPackage/ath9k/config
 
+	config ATH9K_HWRNG
+		bool "Add wireless noise as source of randomness to kernel entropy pool"
+		depends on PACKAGE_kmod-ath9k
+		select PACKAGE_kmod-random-core
+		default n
+
 	config ATH9K_SUPPORT_PCOEM
 		bool "Support chips used in PC OEM cards"
 		depends on PACKAGE_kmod-ath9k
@@ -291,4 +300,12 @@ define KernelPackage/owl-loader/description
   together with the calibration data in the file system.
 
   This is necessary for devices like the Cisco Meraki Z1.
+endef
+
+define KernelPackage/ar5523
+  $(call KernelPackage/mac80211/Default)
+  TITLE:=Driver for Atheros AR5523 USB sticks
+  DEPENDS:=@USB_SUPPORT +kmod-mac80211 +kmod-ath +kmod-usb-core +kmod-input-core 
+  FILES:=$(PKG_BUILD_DIR)/drivers/net/wireless/ath/ar5523/ar5523.ko
+  AUTOLOAD:=$(call AutoProbe,ar5523)
 endef
