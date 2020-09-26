@@ -8,11 +8,9 @@ Signed-off-by: John Crispin <john@phrozen.org>
  arch/arm/boot/dts/Makefile | 23 +++++++++++++++++++++++
  1 file changed, 23 insertions(+)
 
-Index: linux-5.4.63/arch/arm/boot/dts/Makefile
-===================================================================
---- linux-5.4.63.orig/arch/arm/boot/dts/Makefile
-+++ linux-5.4.63/arch/arm/boot/dts/Makefile
-@@ -837,11 +837,52 @@ dtb-$(CONFIG_ARCH_QCOM) += \
+--- a/arch/arm/boot/dts/Makefile
++++ b/arch/arm/boot/dts/Makefile
+@@ -837,11 +837,54 @@ dtb-$(CONFIG_ARCH_QCOM) += \
  	qcom-apq8074-dragonboard.dtb \
  	qcom-apq8084-ifc6540.dtb \
  	qcom-apq8084-mtp.dtb \
@@ -35,6 +33,7 @@ Index: linux-5.4.63/arch/arm/boot/dts/Makefile
 +	qcom-ipq4019-oap100.dtb \
 +	qcom-ipq4018-rt-ac58u.dtb \
 +	qcom-ipq4018-wre6606.dtb \
++	qcom-ipq4018-wrtq-329acn.dtb \
  	qcom-ipq4019-ap.dk01.1-c1.dtb \
  	qcom-ipq4019-ap.dk04.1-c1.dtb \
  	qcom-ipq4019-ap.dk04.1-c3.dtb \
@@ -48,6 +47,7 @@ Index: linux-5.4.63/arch/arm/boot/dts/Makefile
 +	qcom-ipq4019-fritzrepeater-1200.dtb \
 +	qcom-ipq4019-fritzrepeater-3000.dtb \
 +	qcom-ipq4019-map-ac2200.dtb \
++	qcom-ipq4019-mr8300.dtb \
 +	qcom-ipq4019-e2600ac-c1.dtb \
 +	qcom-ipq4019-e2600ac-c2.dtb \
 +	qcom-ipq4019-habanero-dvk.dtb \
