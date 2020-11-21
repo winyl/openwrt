@@ -119,6 +119,15 @@ define Device/glinet_vixmini
 endef
 TARGET_DEVICES += glinet_vixmini
 
+define Device/hak5_wifi-pineapple-mk7
+  IMAGE_SIZE := 32448k
+  DEVICE_VENDOR := Hak5
+  DEVICE_MODEL := WiFi Pineapple Mark 7
+  DEVICE_PACKAGES := kmod-usb2 kmod-usb-ohci
+  SUPPORTED_DEVICES += wifi-pineapple-mk7
+endef
+TARGET_DEVICES += hak5_wifi-pineapple-mk7
+
 define Device/hilink_hlk-7628n
   IMAGE_SIZE := 32448k
   DEVICE_VENDOR := HILINK
@@ -412,6 +421,16 @@ define Device/tplink_re200-v3
   TPLINK_BOARD_ID := RE200-V3
 endef
 TARGET_DEVICES += tplink_re200-v3
+
+define Device/tplink_re200-v4
+  $(Device/tplink-safeloader)
+  IMAGE_SIZE := 7808k
+  DEVICE_MODEL := RE200
+  DEVICE_VARIANT := v4
+  DEVICE_PACKAGES := kmod-mt76x0e
+  TPLINK_BOARD_ID := RE200-V4
+endef
+TARGET_DEVICES += tplink_re200-v4
 
 define Device/tplink_re220-v2
   $(Device/tplink-safeloader)
