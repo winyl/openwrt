@@ -862,6 +862,17 @@ define Device/engenius_loader_okli
 	check-size | engenius-tar-gz $$$$(ENGENIUS_IMGNAME)
 endef
 
+define Device/engenius_eap300-v2
+  $(Device/engenius_loader_okli)
+  SOC := ar9341
+  DEVICE_MODEL := EAP300
+  DEVICE_VARIANT := v2
+  IMAGE_SIZE := 12032k
+  LOADER_FLASH_OFFS := 0x230000
+  ENGENIUS_IMGNAME := senao-eap300v2
+endef
+TARGET_DEVICES += engenius_eap300-v2
+
 define Device/engenius_ecb1750
   SOC := qca9558
   DEVICE_VENDOR := EnGenius
@@ -1133,9 +1144,11 @@ define Device/jjplus_ja76pf2
   DEVICE_VENDOR := jjPlus
   DEVICE_MODEL := JA76PF2
   DEVICE_PACKAGES += -kmod-ath9k -swconfig -wpad-basic-wolfssl -uboot-envtools fconfig
-  IMAGES := kernel.bin rootfs.bin
+  IMAGES += kernel.bin rootfs.bin
   IMAGE/kernel.bin := append-kernel
   IMAGE/rootfs.bin := append-rootfs | pad-rootfs
+  IMAGE/sysupgrade.bin := append-rootfs | pad-rootfs | combined-image | \
+	append-metadata | check-size
   KERNEL := kernel-bin | append-dtb | lzma | pad-to $$(BLOCKSIZE)
   KERNEL_INITRAMFS := kernel-bin | append-dtb
   IMAGE_SIZE := 16000k
@@ -1214,7 +1227,7 @@ TARGET_DEVICES += nec_wg800hp
 define Device/netgear_ex6400_ex7300
   $(Device/netgear_generic)
   SOC := qca9558
-  NETGEAR_KERNEL_MAGIC := 0x27051956
+  UIMAGE_MAGIC := 0x27051956
   NETGEAR_BOARD_ID := EX7300series
   NETGEAR_HW_ID := 29765104+16+0+128
   IMAGE_SIZE := 15552k
@@ -1250,7 +1263,7 @@ define Device/netgear_wndr3700
   $(Device/netgear_wndr3x00)
   DEVICE_MODEL := WNDR3700
   DEVICE_VARIANT := v1
-  NETGEAR_KERNEL_MAGIC := 0x33373030
+  UIMAGE_MAGIC := 0x33373030
   NETGEAR_BOARD_ID := WNDR3700
   IMAGE_SIZE := 7680k
   IMAGES += factory-NA.img
@@ -1264,7 +1277,7 @@ define Device/netgear_wndr3700-v2
   $(Device/netgear_wndr3x00)
   DEVICE_MODEL := WNDR3700
   DEVICE_VARIANT := v2
-  NETGEAR_KERNEL_MAGIC := 0x33373031
+  UIMAGE_MAGIC := 0x33373031
   NETGEAR_BOARD_ID := WNDR3700v2
   NETGEAR_HW_ID := 29763654+16+64
   IMAGE_SIZE := 15872k
@@ -1275,7 +1288,7 @@ TARGET_DEVICES += netgear_wndr3700-v2
 define Device/netgear_wndr3800
   $(Device/netgear_wndr3x00)
   DEVICE_MODEL := WNDR3800
-  NETGEAR_KERNEL_MAGIC := 0x33373031
+  UIMAGE_MAGIC := 0x33373031
   NETGEAR_BOARD_ID := WNDR3800
   NETGEAR_HW_ID := 29763654+16+128
   IMAGE_SIZE := 15872k
@@ -1286,7 +1299,7 @@ TARGET_DEVICES += netgear_wndr3800
 define Device/netgear_wndr3800ch
   $(Device/netgear_wndr3x00)
   DEVICE_MODEL := WNDR3800CH
-  NETGEAR_KERNEL_MAGIC := 0x33373031
+  UIMAGE_MAGIC := 0x33373031
   NETGEAR_BOARD_ID := WNDR3800CH
   NETGEAR_HW_ID := 29763654+16+128
   IMAGE_SIZE := 15872k
@@ -1298,7 +1311,7 @@ define Device/netgear_wndrmac-v1
   $(Device/netgear_wndr3x00)
   DEVICE_MODEL := WNDRMAC
   DEVICE_VARIANT := v1
-  NETGEAR_KERNEL_MAGIC := 0x33373031
+  UIMAGE_MAGIC := 0x33373031
   NETGEAR_BOARD_ID := WNDRMAC
   NETGEAR_HW_ID := 29763654+16+64
   IMAGE_SIZE := 15872k
@@ -1310,7 +1323,7 @@ define Device/netgear_wndrmac-v2
   $(Device/netgear_wndr3x00)
   DEVICE_MODEL := WNDRMAC
   DEVICE_VARIANT := v2
-  NETGEAR_KERNEL_MAGIC := 0x33373031
+  UIMAGE_MAGIC := 0x33373031
   NETGEAR_BOARD_ID := WNDRMACv2
   NETGEAR_HW_ID := 29763654+16+128
   IMAGE_SIZE := 15872k
@@ -1323,7 +1336,7 @@ define Device/netgear_wnr2200_common
   SOC := ar7241
   DEVICE_MODEL := WNR2200
   DEVICE_PACKAGES := kmod-usb2 kmod-usb-ledtrig-usbport
-  NETGEAR_KERNEL_MAGIC := 0x32323030
+  UIMAGE_MAGIC := 0x32323030
   NETGEAR_BOARD_ID := wnr2200
 endef
 
@@ -1648,7 +1661,6 @@ define Device/sitecom_wlr-7100
   SOC := ar1022
   DEVICE_VENDOR := Sitecom
   DEVICE_MODEL := WLR-7100
-  DEVICE_VARIANT := v1 002
   DEVICE_PACKAGES := ath10k-firmware-qca988x-ct kmod-ath10k-ct-smallbuffers kmod-usb2
   IMAGES += factory.dlf
   IMAGE/factory.dlf := append-kernel | pad-to $$$$(BLOCKSIZE) | \
